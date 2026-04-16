@@ -31,11 +31,11 @@ A local hub that lets multiple Claude Code sessions message each other. Each ses
 
 ## Setup
 
+### 1. Start the daemon
+
 ```bash
 git clone https://github.com/rophy/ccc-hub.git
 cd ccc-hub
-npm install
-npm run build
 docker compose up -d
 ```
 
@@ -46,7 +46,16 @@ docker compose logs --tail 5
 # [ccc-hub] listening on :7777
 ```
 
-Add the channel to your user-level MCP config at `~/.claude.json`:
+### 2. Install the channel plugin
+
+From within Claude Code:
+
+```
+/plugin marketplace add rophy/ccc-hub
+/plugin install ccc-hub@rophy-plugins
+```
+
+Alternatively, skip the marketplace and register the channel directly via `~/.claude.json`:
 
 ```json
 {
@@ -54,20 +63,20 @@ Add the channel to your user-level MCP config at `~/.claude.json`:
     "ccc-hub": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/to/ccc-hub/dist/channel/index.js"],
+      "args": ["/absolute/path/to/ccc-hub/plugin/channel.js"],
       "env": { "CCC_HUB_URL": "ws://127.0.0.1:7777" }
     }
   }
 }
 ```
 
-Or copy `.mcp.json.example` into your project for project-scoped use.
-
 ## Usage
 
 Launch any Claude Code session with the channel enabled:
 
 ```bash
+claude --dangerously-load-development-channels plugin:ccc-hub@rophy-plugins
+# or, if you registered via ~/.claude.json:
 claude --dangerously-load-development-channels server:ccc-hub
 ```
 
@@ -141,10 +150,14 @@ Error codes:
 ## Development
 
 ```bash
-npm run dev:daemon    # run daemon via tsx (no docker)
-npm run dev:channel   # run channel standalone (useful for debugging)
-npm run build         # compile to dist/
+npm install
+npm run dev:daemon      # run daemon via tsx (no docker)
+npm run dev:channel     # run channel standalone (useful for debugging)
+npm run build           # compile to dist/
+npm run build:plugin    # bundle channel into plugin/channel.js (committed)
 ```
+
+After changing channel code, run `npm run build:plugin` to refresh the committed bundle before publishing a new plugin version.
 
 ## License
 

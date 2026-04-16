@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "ccc-hub": {
+      "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/to/ccc-hub/plugin/channel.js"],
+      "args": ["${CLAUDE_PLUGIN_ROOT}/channel.js"],
       "env": {
         "CCC_HUB_URL": "ws://127.0.0.1:7777"
       }

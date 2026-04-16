@@ -1,0 +1,12 @@
+{
+  "name": "ccc-hub",
+  "description": "Local hub channel that lets multiple Claude Code sessions message each other",
+  "version": "0.0.1",
+  "author": {
+    "name": "rophy"
+  },
+  "homepage": "https://github.com/rophy/ccc-hub",
+  "repository": "https://github.com/rophy/ccc-hub",
+  "license": "MIT",
+  "keywords": ["channel", "mcp", "hub", "messaging"]
+}

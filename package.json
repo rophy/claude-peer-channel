@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:plugin": "esbuild src/channel/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=plugin/channel.js",
     "dev:daemon": "tsx src/daemon/index.ts",
     "dev:channel": "tsx src/channel/index.ts"
   },
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/ws": "^8.5.12",
+    "esbuild": "^0.28.0",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   },

@@ -1,0 +1,17 @@
+{
+  "name": "rophy-plugins",
+  "owner": {
+    "name": "rophy"
+  },
+  "metadata": {
+    "description": "Personal Claude Code plugin marketplace by rophy"
+  },
+  "plugins": [
+    {
+      "name": "ccc-hub",
+      "source": "./plugin",
+      "description": "Local hub channel for inter-Claude-Code-session messaging",
+      "category": "channel"
+    }
+  ]
+}
