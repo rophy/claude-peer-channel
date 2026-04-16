@@ -1,6 +1,6 @@
 # peer-channel
 
-A local hub that lets multiple Claude Code sessions talk to each other. Each session connects to the hub via a Claude Code [channel](https://code.claude.com/docs/en/channels-reference) (an MCP server), registers under a name, and can then list peers and exchange messages.
+Lets multiple Claude Code sessions talk to each other locally. Each session registers under a name and can then list peers and exchange messages.
 
 ## Architecture
 
@@ -10,43 +10,24 @@ A local hub that lets multiple Claude Code sessions talk to each other. Each ses
       | stdio (MCP)               | stdio (MCP)
       v                           v
   peer-channel               peer-channel
-      |                           |
-      | WebSocket / JSON-RPC 2.0  |
-      +------------+--------------+
-                   v
-         peer-channel daemon
-         (Docker, 127.0.0.1:7777)
+ (~/.peer-channel/          (~/.peer-channel/
+   sessions/A.sock)           sessions/B.sock)
+      |           peer-to-peer            |
+      +------- AF_UNIX + NDJSON ----------+
 ```
 
-- **Daemon** runs in Docker, binds to `127.0.0.1` only, holds the session registry, and routes messages.
-- **Channel subprocess** is spawned by each Claude Code session. It bridges CC's stdio MCP transport to the daemon's WebSocket.
-- Protocol is JSON-RPC 2.0 over WebSocket. All traffic is localhost.
+Each session's channel subprocess claims a name by acquiring a lockfile at `~/.peer-channel/sessions/<name>.lock` and binds a Unix domain socket at `~/.peer-channel/sessions/<name>.sock`. Messaging is direct peer-to-peer: the sender opens a one-shot connection to the recipient's socket, writes one NDJSON JSON-RPC request, reads the response, closes.
+
+No central daemon. No Docker. No open TCP port.
 
 ## Requirements
 
-- Docker + Docker Compose
 - Node.js 20+
 - Claude Code v2.1.80+ with claude.ai login (channels are in research preview)
 - On Team/Enterprise plans, an admin must enable channels
+- Linux or macOS (Windows support is not yet wired up)
 
-## Setup
-
-### 1. Start the daemon
-
-```bash
-git clone https://github.com/rophy/claude-peer-channel.git
-cd claude-peer-channel
-docker compose up -d
-```
-
-The daemon now listens on `127.0.0.1:7777`. Verify:
-
-```bash
-docker compose logs --tail 5
-# [peer-channel] listening on :7777
-```
-
-### 2. Install the channel plugin
+## Install
 
 From within Claude Code:
 
@@ -55,7 +36,7 @@ From within Claude Code:
 /plugin install peer-channel@rophy-plugins
 ```
 
-Alternatively, skip the marketplace and register the channel directly via `~/.claude.json`:
+Alternatively, register the channel directly via `~/.claude.json`:
 
 ```json
 {
@@ -63,8 +44,7 @@ Alternatively, skip the marketplace and register the channel directly via `~/.cl
     "peer-channel": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/to/claude-peer-channel/plugin/channel.js"],
-      "env": { "PEER_CHANNEL_URL": "ws://127.0.0.1:7777" }
+      "args": ["/absolute/path/to/claude-peer-channel/plugin/channel.js"]
     }
   }
 }
@@ -82,7 +62,7 @@ claude --dangerously-load-development-channels server:peer-channel
 
 The `--dangerously-load-development-channels` flag is required during the channels research preview until peer-channel is on the approved allowlist.
 
-On startup, the channel registers with the daemon and reports its assigned name to stderr:
+On startup, the channel reports its registered name to stderr:
 
 ```
 [peer-channel] registered as: my-project
@@ -90,7 +70,7 @@ On startup, the channel registers with the daemon and reports its assigned name 
 
 ### Tools exposed to Claude
 
-- **`list_sessions`** — returns the names of all sessions currently connected.
+- **`list_sessions`** — returns the names of all other sessions currently reachable.
 - **`send_message(to, text, in_reply_to?)`** — sends a message to another session. Pass `in_reply_to` with a prior message's id to thread replies.
 
 ### Inbound messages
@@ -105,7 +85,7 @@ message body
 
 ## Session naming
 
-By default, a session's name is `basename(cwd)`. If that collides with an already-registered session, the daemon appends a short random suffix and returns the assigned name.
+By default, a session's name is `basename(cwd)`. If that name is already claimed by another live session, the channel appends a short random suffix.
 
 Override with an environment variable:
 
@@ -115,43 +95,44 @@ PEER_CHANNEL_SESSION_NAME=backend-api claude --dangerously-load-development-chan
 
 ## Environment variables
 
-| Variable | Component | Default | Description |
-|---|---|---|---|
-| `PORT` | daemon | `7777` | Port to listen on inside the container |
-| `PEER_CHANNEL_URL` | channel | `ws://127.0.0.1:7777` | Hub WebSocket URL |
-| `PEER_CHANNEL_SESSION_NAME` | channel | `basename(cwd)` | Override session name |
+| Variable | Default | Description |
+|---|---|---|
+| `PEER_CHANNEL_SESSION_NAME` | `basename(cwd)` | Override session name |
 
 ## Protocol
 
-JSON-RPC 2.0 over WebSocket. Methods are client-initiated; the `deliver` notification is server-pushed.
+Newline-delimited JSON-RPC 2.0 over an AF_UNIX stream socket. One request per connection.
 
 | Method | Params | Result |
 |---|---|---|
-| `register` | `{name}` | `{assigned_name}` |
-| `list_sessions` | `{}` | `{sessions: string[]}` |
-| `send_message` | `{to, text, in_reply_to?}` | `{message_id}` |
+| `ping` | `{}` | `{name, version, protocol}` |
+| `deliver` | `{from, text, in_reply_to?}` | `{message_id}` |
 
-| Notification | Params |
-|---|---|
-| `deliver` | `{from, text, message_id, in_reply_to?}` |
-
-Error codes:
-- `-32001` session not found
-- `-32002` not registered
-- `-32003` already registered
+Error codes follow JSON-RPC conventions (`-32700` parse, `-32600` invalid request, `-32601` method not found, `-32602` invalid params, `-32603` internal).
 
 ## Design decisions
 
-- **No offline delivery.** If the target session isn't connected, `send_message` returns an error. If the daemon isn't running, the channel fails at startup.
+- **No offline delivery.** If the target session isn't reachable, `send_message` returns an error.
 - **No presence push.** Sessions don't receive join/leave events; call `list_sessions` on demand.
-- **Localhost-only trust.** The daemon binds to `127.0.0.1` and trusts any local connection. Do not expose the port externally.
+- **Per-user trust.** The sessions directory is `mode 0700` and sockets are `mode 0600` — only the user that owns the home directory can interact with the channel.
 - **Peer messages are untrusted input.** Another session's text is treated as a user-like request, not as instructions to Claude.
+- **Name claim via [`proper-lockfile`](https://www.npmjs.com/package/proper-lockfile).** Stale locks are auto-reclaimed after 10s; the owner refreshes every 5s while alive. A crashed session becomes reclaimable within that window.
+
+## Filesystem layout
+
+```
+~/.peer-channel/
+└── sessions/
+    ├── alice.lock/    # directory, created by proper-lockfile
+    ├── alice.sock     # AF_UNIX socket
+    ├── bob.lock/
+    └── bob.sock
+```
 
 ## Development
 
 ```bash
 npm install
-npm run dev:daemon      # run daemon via tsx (no docker)
 npm run dev:channel     # run channel standalone (useful for debugging)
 npm run build           # compile to dist/
 npm run build:plugin    # bundle channel into plugin/channel.js (committed)
