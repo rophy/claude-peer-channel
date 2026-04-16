@@ -4,13 +4,11 @@
   "description": "Local hub that lets Claude Code sessions talk to each other via MCP channel",
   "type": "module",
   "bin": {
-    "peer-channel-daemon": "dist/daemon/index.js",
     "peer-channel": "dist/channel/index.js"
   },
   "scripts": {
     "build": "tsc",
     "build:plugin": "esbuild src/channel/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=plugin/channel.js",
-    "dev:daemon": "tsx src/daemon/index.ts",
     "dev:channel": "tsx src/channel/index.ts"
   },
   "dependencies": {
