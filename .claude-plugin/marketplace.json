@@ -10,7 +10,7 @@
     {
       "name": "peer-channel",
       "source": "./plugin",
-      "description": "Lets Claude Code sessions talk to each other via a local hub",
+      "description": "Peer-to-peer messaging between Claude Code sessions on the same machine, over Unix sockets",
       "category": "channel"
     }
   ]

@@ -1,6 +1,6 @@
 {
   "name": "peer-channel",
-  "description": "Lets Claude Code sessions talk to each other via a local hub",
+  "description": "Peer-to-peer messaging between Claude Code sessions on the same machine, over Unix sockets",
   "version": "0.0.1",
   "author": {
     "name": "rophy"
@@ -8,5 +8,5 @@
   "homepage": "https://github.com/rophy/claude-peer-channel",
   "repository": "https://github.com/rophy/claude-peer-channel",
   "license": "MIT",
-  "keywords": ["channel", "mcp", "hub", "messaging", "peer"]
+  "keywords": ["channel", "mcp", "messaging", "peer", "ipc"]
 }
