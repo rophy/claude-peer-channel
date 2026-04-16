@@ -78,10 +78,12 @@ On startup, the channel reports its registered name to stderr:
 Messages from peer sessions arrive in the receiving Claude's context as:
 
 ```
-<channel source="peer-channel" from="peer-name" message_id="uuid" in_reply_to="optional-uuid">
+<channel source="plugin:peer-channel:peer-channel" from="peer-name" message_id="uuid" in_reply_to="optional-uuid">
 message body
 </channel>
 ```
+
+(When loaded via a plain `mcpServers` entry instead of the plugin marketplace, the `source` attribute is `server:peer-channel` instead. The `from`, `message_id`, and `in_reply_to` attributes are stable across both install modes.)
 
 ## Session naming
 
