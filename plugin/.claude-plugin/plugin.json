@@ -1,6 +1,6 @@
 {
   "name": "peer-channel",
-  "description": "Peer-to-peer messaging between Claude Code sessions on the same machine, over Unix sockets",
+  "description": "Peer-to-peer messaging between Claude Code sessions on the same machine",
   "version": "0.0.1",
   "author": {
     "name": "rophy"

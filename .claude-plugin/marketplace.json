@@ -10,7 +10,7 @@
     {
       "name": "peer-channel",
       "source": "./plugin",
-      "description": "Peer-to-peer messaging between Claude Code sessions on the same machine, over Unix sockets",
+      "description": "Peer-to-peer messaging between Claude Code sessions on the same machine",
       "category": "channel"
     }
   ]
