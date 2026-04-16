@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 import { randomBytes } from 'node:crypto'
 
 export function defaultSessionName(cwd: string = process.cwd()): string {
-  const fromEnv = process.env.CCC_SESSION_NAME?.trim()
+  const fromEnv = process.env.PEER_CHANNEL_SESSION_NAME?.trim()
   if (fromEnv) return fromEnv
   const base = basename(cwd)
   return base || 'session'

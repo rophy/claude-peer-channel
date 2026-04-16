@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "ccc-hub": {
+    "peer-channel": {
       "command": "node",
-      "args": ["/absolute/path/to/ccc-hub/plugin/channel.js"],
+      "args": ["/absolute/path/to/claude-peer-channel/plugin/channel.js"],
       "env": {
-        "CCC_HUB_URL": "ws://127.0.0.1:7777"
+        "PEER_CHANNEL_URL": "ws://127.0.0.1:7777"
       }
     }
   }

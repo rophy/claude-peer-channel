@@ -1,11 +1,11 @@
 {
-  "name": "ccc-hub",
+  "name": "claude-peer-channel",
   "version": "0.0.1",
-  "description": "Local hub for inter-Claude-Code-session messaging via MCP channel",
+  "description": "Local hub that lets Claude Code sessions talk to each other via MCP channel",
   "type": "module",
   "bin": {
-    "ccc-hub-daemon": "dist/daemon/index.js",
-    "ccc-hub-channel": "dist/channel/index.js"
+    "peer-channel-daemon": "dist/daemon/index.js",
+    "peer-channel": "dist/channel/index.js"
   },
   "scripts": {
     "build": "tsc",

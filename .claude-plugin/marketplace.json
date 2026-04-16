@@ -8,9 +8,9 @@
   },
   "plugins": [
     {
-      "name": "ccc-hub",
+      "name": "peer-channel",
       "source": "./plugin",
-      "description": "Local hub channel for inter-Claude-Code-session messaging",
+      "description": "Lets Claude Code sessions talk to each other via a local hub",
       "category": "channel"
     }
   ]

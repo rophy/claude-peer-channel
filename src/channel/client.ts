@@ -44,12 +44,12 @@ export class HubClient {
       }
       this.pending.clear()
       if (this.opened) {
-        console.error('[ccc-hub-channel] hub connection closed, exiting')
+        console.error('[peer-channel] hub connection closed, exiting')
         process.exit(1)
       }
     })
     this.ws.on('error', err => {
-      console.error(`[ccc-hub-channel] hub error: ${err.message}`)
+      console.error(`[peer-channel] hub error: ${err.message}`)
     })
   }
 

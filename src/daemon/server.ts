@@ -96,13 +96,13 @@ export function startServer(port: number): WebSocketServer {
     ws.on('close', () => {
       const name = registry.unregister(ws)
       if (name) {
-        console.log(`[ccc-hub] unregistered: ${name}`)
+        console.log(`[peer-channel] unregistered: ${name}`)
       }
     })
   })
 
   wss.on('listening', () => {
-    console.log(`[ccc-hub] listening on :${port}`)
+    console.log(`[peer-channel] listening on :${port}`)
   })
 
   return wss
@@ -117,7 +117,7 @@ function handle(req: JsonRpcRequest, ws: WebSocket, registry: SessionRegistry): 
       }
       const params = RegisterParams.parse(req.params)
       const assigned = registry.register(params.name, ws)
-      console.log(`[ccc-hub] registered: ${assigned}`)
+      console.log(`[peer-channel] registered: ${assigned}`)
       const result: RegisterResult = { assigned_name: assigned }
       reply(ws, req.id, result)
       return

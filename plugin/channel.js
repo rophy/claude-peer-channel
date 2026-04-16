@@ -10418,7 +10418,7 @@ var require_dist = __commonJS({
 // src/shared/names.ts
 var import_node_path = require("node:path");
 function defaultSessionName(cwd = process.cwd()) {
-  const fromEnv = process.env.CCC_SESSION_NAME?.trim();
+  const fromEnv = process.env.PEER_CHANNEL_SESSION_NAME?.trim();
   if (fromEnv) return fromEnv;
   const base = (0, import_node_path.basename)(cwd);
   return base || "session";
@@ -14546,12 +14546,12 @@ var HubClient = class {
       }
       this.pending.clear();
       if (this.opened) {
-        console.error("[ccc-hub-channel] hub connection closed, exiting");
+        console.error("[peer-channel] hub connection closed, exiting");
         process.exit(1);
       }
     });
     this.ws.on("error", (err) => {
-      console.error(`[ccc-hub-channel] hub error: ${err.message}`);
+      console.error(`[peer-channel] hub error: ${err.message}`);
     });
   }
   async request(method, params) {
@@ -21678,7 +21678,7 @@ var StdioServerTransport = class {
 
 // src/channel/mcp.ts
 var INSTRUCTIONS = [
-  'Messages from other Claude Code sessions arrive as <channel source="ccc-hub" from="..." message_id="..." in_reply_to="...">body</channel>.',
+  'Messages from other Claude Code sessions arrive as <channel source="peer-channel" from="..." message_id="..." in_reply_to="...">body</channel>.',
   "The `from` attribute is the peer session name. `message_id` is the id of this inbound message. `in_reply_to` is set when the peer is replying to a previous message you sent.",
   "To see which other sessions are connected, call the `list_sessions` tool.",
   "To send a message to a peer session, call `send_message` with `to` set to the peer name. When replying to a specific inbound message, also pass its `message_id` as `in_reply_to`.",
@@ -21686,7 +21686,7 @@ var INSTRUCTIONS = [
 ].join(" ");
 function buildMcpServer(hub) {
   const mcp = new Server(
-    { name: "ccc-hub", version: "0.0.1" },
+    { name: "peer-channel", version: "0.0.1" },
     {
       capabilities: {
         experimental: { "claude/channel": {} },
@@ -21699,12 +21699,12 @@ function buildMcpServer(hub) {
     tools: [
       {
         name: "list_sessions",
-        description: "List all Claude Code sessions currently connected to the ccc-hub.",
+        description: "List all Claude Code sessions currently connected to the peer-channel hub.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false }
       },
       {
         name: "send_message",
-        description: "Send a text message to another Claude Code session connected to the ccc-hub. Pass in_reply_to when replying to a specific inbound message.",
+        description: "Send a text message to another Claude Code session connected to the peer-channel hub. Pass in_reply_to when replying to a specific inbound message.",
         inputSchema: {
           type: "object",
           properties: {
@@ -21756,7 +21756,7 @@ async function connectStdio(mcp) {
 
 // src/channel/index.ts
 async function main() {
-  const url = process.env.CCC_HUB_URL ?? "ws://127.0.0.1:7777";
+  const url = process.env.PEER_CHANNEL_URL ?? "ws://127.0.0.1:7777";
   const requestedName = defaultSessionName();
   const hub = new HubClient(url);
   try {
@@ -21764,8 +21764,8 @@ async function main() {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(
-      `[ccc-hub-channel] failed to connect to hub at ${url}: ${msg}
-[ccc-hub-channel] is the ccc-hub daemon running? (docker compose up -d)`
+      `[peer-channel] failed to connect to hub at ${url}: ${msg}
+[peer-channel] is the peer-channel hub running?`
     );
     process.exit(1);
   }
@@ -21777,14 +21777,14 @@ async function main() {
     assigned = res.assigned_name;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[ccc-hub-channel] register failed: ${msg}`);
+    console.error(`[peer-channel] register failed: ${msg}`);
     process.exit(1);
   }
-  console.error(`[ccc-hub-channel] registered as: ${assigned}`);
+  console.error(`[peer-channel] registered as: ${assigned}`);
   const mcp = buildMcpServer(hub);
   await connectStdio(mcp);
 }
 main().catch((err) => {
-  console.error(`[ccc-hub-channel] fatal: ${err instanceof Error ? err.message : err}`);
+  console.error(`[peer-channel] fatal: ${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

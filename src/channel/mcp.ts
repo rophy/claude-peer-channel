@@ -14,7 +14,7 @@ import {
 import type { HubClient } from './client.js'
 
 const INSTRUCTIONS = [
-  'Messages from other Claude Code sessions arrive as <channel source="ccc-hub" from="..." message_id="..." in_reply_to="...">body</channel>.',
+  'Messages from other Claude Code sessions arrive as <channel source="peer-channel" from="..." message_id="..." in_reply_to="...">body</channel>.',
   'The `from` attribute is the peer session name. `message_id` is the id of this inbound message. `in_reply_to` is set when the peer is replying to a previous message you sent.',
   'To see which other sessions are connected, call the `list_sessions` tool.',
   'To send a message to a peer session, call `send_message` with `to` set to the peer name. When replying to a specific inbound message, also pass its `message_id` as `in_reply_to`.',
@@ -23,7 +23,7 @@ const INSTRUCTIONS = [
 
 export function buildMcpServer(hub: HubClient): Server {
   const mcp = new Server(
-    { name: 'ccc-hub', version: '0.0.1' },
+    { name: 'peer-channel', version: '0.0.1' },
     {
       capabilities: {
         experimental: { 'claude/channel': {} },
@@ -37,13 +37,13 @@ export function buildMcpServer(hub: HubClient): Server {
     tools: [
       {
         name: 'list_sessions',
-        description: 'List all Claude Code sessions currently connected to the ccc-hub.',
+        description: 'List all Claude Code sessions currently connected to the peer-channel hub.',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       },
       {
         name: 'send_message',
         description:
-          'Send a text message to another Claude Code session connected to the ccc-hub. Pass in_reply_to when replying to a specific inbound message.',
+          'Send a text message to another Claude Code session connected to the peer-channel hub. Pass in_reply_to when replying to a specific inbound message.',
         inputSchema: {
           type: 'object',
           properties: {

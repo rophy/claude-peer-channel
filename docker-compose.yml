@@ -1,8 +1,8 @@
 services:
-  ccc-hub:
+  peer-channel:
     build: .
-    image: ccc-hub:latest
-    container_name: ccc-hub
+    image: peer-channel:latest
+    container_name: peer-channel
     ports:
       - "127.0.0.1:7777:7777"
     restart: unless-stopped

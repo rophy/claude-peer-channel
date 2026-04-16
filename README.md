@@ -1,6 +1,6 @@
-# ccc-hub
+# peer-channel
 
-A local hub that lets multiple Claude Code sessions message each other. Each session connects to the hub via a Claude Code [channel](https://code.claude.com/docs/en/channels-reference) (an MCP server), registers under a name, and can then list peers and exchange messages.
+A local hub that lets multiple Claude Code sessions talk to each other. Each session connects to the hub via a Claude Code [channel](https://code.claude.com/docs/en/channels-reference) (an MCP server), registers under a name, and can then list peers and exchange messages.
 
 ## Architecture
 
@@ -9,12 +9,12 @@ A local hub that lets multiple Claude Code sessions message each other. Each ses
       |                           |
       | stdio (MCP)               | stdio (MCP)
       v                           v
- ccc-hub-channel            ccc-hub-channel
+  peer-channel               peer-channel
       |                           |
       | WebSocket / JSON-RPC 2.0  |
       +------------+--------------+
                    v
-          ccc-hub daemon
+         peer-channel daemon
          (Docker, 127.0.0.1:7777)
 ```
 
@@ -34,8 +34,8 @@ A local hub that lets multiple Claude Code sessions message each other. Each ses
 ### 1. Start the daemon
 
 ```bash
-git clone https://github.com/rophy/ccc-hub.git
-cd ccc-hub
+git clone https://github.com/rophy/claude-peer-channel.git
+cd claude-peer-channel
 docker compose up -d
 ```
 
@@ -43,7 +43,7 @@ The daemon now listens on `127.0.0.1:7777`. Verify:
 
 ```bash
 docker compose logs --tail 5
-# [ccc-hub] listening on :7777
+# [peer-channel] listening on :7777
 ```
 
 ### 2. Install the channel plugin
@@ -51,8 +51,8 @@ docker compose logs --tail 5
 From within Claude Code:
 
 ```
-/plugin marketplace add rophy/ccc-hub
-/plugin install ccc-hub@rophy-plugins
+/plugin marketplace add rophy/claude-peer-channel
+/plugin install peer-channel@rophy-plugins
 ```
 
 Alternatively, skip the marketplace and register the channel directly via `~/.claude.json`:
@@ -60,11 +60,11 @@ Alternatively, skip the marketplace and register the channel directly via `~/.cl
 ```json
 {
   "mcpServers": {
-    "ccc-hub": {
+    "peer-channel": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/to/ccc-hub/plugin/channel.js"],
-      "env": { "CCC_HUB_URL": "ws://127.0.0.1:7777" }
+      "args": ["/absolute/path/to/claude-peer-channel/plugin/channel.js"],
+      "env": { "PEER_CHANNEL_URL": "ws://127.0.0.1:7777" }
     }
   }
 }
@@ -75,17 +75,17 @@ Alternatively, skip the marketplace and register the channel directly via `~/.cl
 Launch any Claude Code session with the channel enabled:
 
 ```bash
-claude --dangerously-load-development-channels plugin:ccc-hub@rophy-plugins
+claude --dangerously-load-development-channels plugin:peer-channel@rophy-plugins
 # or, if you registered via ~/.claude.json:
-claude --dangerously-load-development-channels server:ccc-hub
+claude --dangerously-load-development-channels server:peer-channel
 ```
 
-The `--dangerously-load-development-channels` flag is required during the channels research preview until ccc-hub is on the approved allowlist.
+The `--dangerously-load-development-channels` flag is required during the channels research preview until peer-channel is on the approved allowlist.
 
 On startup, the channel registers with the daemon and reports its assigned name to stderr:
 
 ```
-[ccc-hub-channel] registered as: my-project
+[peer-channel] registered as: my-project
 ```
 
 ### Tools exposed to Claude
@@ -98,7 +98,7 @@ On startup, the channel registers with the daemon and reports its assigned name 
 Messages from peer sessions arrive in the receiving Claude's context as:
 
 ```
-<channel source="ccc-hub" from="peer-name" message_id="uuid" in_reply_to="optional-uuid">
+<channel source="peer-channel" from="peer-name" message_id="uuid" in_reply_to="optional-uuid">
 message body
 </channel>
 ```
@@ -110,7 +110,7 @@ By default, a session's name is `basename(cwd)`. If that collides with an alread
 Override with an environment variable:
 
 ```bash
-CCC_SESSION_NAME=backend-api claude --dangerously-load-development-channels server:ccc-hub
+PEER_CHANNEL_SESSION_NAME=backend-api claude --dangerously-load-development-channels server:peer-channel
 ```
 
 ## Environment variables
@@ -118,8 +118,8 @@ CCC_SESSION_NAME=backend-api claude --dangerously-load-development-channels serv
 | Variable | Component | Default | Description |
 |---|---|---|---|
 | `PORT` | daemon | `7777` | Port to listen on inside the container |
-| `CCC_HUB_URL` | channel | `ws://127.0.0.1:7777` | Hub WebSocket URL |
-| `CCC_SESSION_NAME` | channel | `basename(cwd)` | Override session name |
+| `PEER_CHANNEL_URL` | channel | `ws://127.0.0.1:7777` | Hub WebSocket URL |
+| `PEER_CHANNEL_SESSION_NAME` | channel | `basename(cwd)` | Override session name |
 
 ## Protocol
 
