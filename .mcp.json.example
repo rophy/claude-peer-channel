@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ccc-hub": {
+      "command": "node",
+      "args": ["/absolute/path/to/ccc-hub/dist/channel/index.js"],
+      "env": {
+        "CCC_HUB_URL": "ws://127.0.0.1:7777"
+      }
+    }
+  }
+}

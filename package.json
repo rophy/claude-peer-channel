@@ -1,0 +1,29 @@
+{
+  "name": "ccc-hub",
+  "version": "0.0.1",
+  "description": "Local hub for inter-Claude-Code-session messaging via MCP channel",
+  "type": "module",
+  "bin": {
+    "ccc-hub-daemon": "dist/daemon/index.js",
+    "ccc-hub-channel": "dist/channel/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev:daemon": "tsx src/daemon/index.ts",
+    "dev:channel": "tsx src/channel/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
