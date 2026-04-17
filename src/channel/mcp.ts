@@ -45,6 +45,15 @@ export function buildMcpServer(selfName: string): McpBundle {
         },
       },
       {
+        name: 'whoami',
+        description: 'Return this session\'s own peer-channel name.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+      {
         name: 'send_message',
         description:
           'Send a text message to another Claude Code session. Pass in_reply_to when replying to a specific inbound message.',
@@ -73,6 +82,9 @@ export function buildMcpServer(selfName: string): McpBundle {
           ? 'No other sessions connected.'
           : sessions.map(s => `- ${s}`).join('\n')
       return { content: [{ type: 'text', text }] }
+    }
+    if (req.params.name === 'whoami') {
+      return { content: [{ type: 'text', text: selfName }] }
     }
     if (req.params.name === 'send_message') {
       const args = req.params.arguments as {
