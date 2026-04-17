@@ -19562,7 +19562,7 @@ var ERROR_CODES = {
 };
 
 // src/channel/peer.ts
-var VERSION = "0.0.1";
+var VERSION = "0.1.0";
 var LOCK_OPTS = {
   stale: 1e4,
   update: 5e3,
@@ -19828,7 +19828,7 @@ var INSTRUCTIONS = [
 ].join(" ");
 function buildMcpServer(selfName) {
   const server = new Server(
-    { name: "peer-channel", version: "0.0.1" },
+    { name: "peer-channel", version: "0.1.0" },
     {
       capabilities: {
         experimental: { "claude/channel": {} },
@@ -19842,6 +19842,15 @@ function buildMcpServer(selfName) {
       {
         name: "list_sessions",
         description: "List other Claude Code sessions currently reachable on this machine via peer-channel.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false
+        }
+      },
+      {
+        name: "whoami",
+        description: "Return this session's own peer-channel name.",
         inputSchema: {
           type: "object",
           properties: {},
@@ -19872,6 +19881,9 @@ function buildMcpServer(selfName) {
       const sessions = await listPeers(selfName);
       const text = sessions.length === 0 ? "No other sessions connected." : sessions.map((s) => `- ${s}`).join("\n");
       return { content: [{ type: "text", text }] };
+    }
+    if (req.params.name === "whoami") {
+      return { content: [{ type: "text", text: selfName }] };
     }
     if (req.params.name === "send_message") {
       const args = req.params.arguments;

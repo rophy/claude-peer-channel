@@ -12,7 +12,7 @@ import {
   PingResult,
 } from '../shared/protocol.js'
 
-const VERSION = '0.0.1'
+const VERSION = '0.1.0'
 const LOCK_OPTS = {
   stale: 10000,
   update: 5000,
