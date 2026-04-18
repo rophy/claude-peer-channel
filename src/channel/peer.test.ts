@@ -128,4 +128,113 @@ describe('sendDeliver + handleConn round-trip', () => {
       sendDeliver('nonexistent', { from: 'a', text: 'b' }, 500),
     ).rejects.toThrow()
   })
+
+  it('returns rpc error when handler throws', async () => {
+    const claim = await claimName('throws-handler')
+    const peer = await claim.listen(async () => {
+      throw new Error('handler exploded')
+    })
+    peers.push(peer)
+
+    await expect(
+      sendDeliver('throws-handler', { from: 'sender', text: 'hi' }, 1000),
+    ).rejects.toThrow('handler exploded')
+  })
+
+  it('returns rpc error for invalid params', async () => {
+    const claim = await claimName('bad-params')
+    const peer = await claim.listen(async () => ({ message_id: 'x' }))
+    peers.push(peer)
+
+    // sendDeliver validates the response, but we can test via raw rpcCall
+    // by sending a deliver with missing required fields through the socket
+    const net = await import('node:net')
+    const { sockPath } = await import('../shared/paths.js')
+    const result = await new Promise<string>((resolve, reject) => {
+      const socket = net.createConnection(sockPath('bad-params'))
+      let buf = ''
+      socket.on('connect', () => {
+        socket.write(JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'deliver',
+          params: { wrong: 'fields' },
+        }) + '\n')
+      })
+      socket.on('data', chunk => {
+        buf += chunk.toString()
+        const nl = buf.indexOf('\n')
+        if (nl !== -1) {
+          resolve(buf.slice(0, nl))
+          socket.destroy()
+        }
+      })
+      socket.on('error', reject)
+    })
+
+    const msg = JSON.parse(result)
+    expect(msg.error).toBeDefined()
+    expect(msg.error.code).toBe(-32602)
+  })
+
+  it('returns rpc error for unknown method', async () => {
+    const claim = await claimName('unknown-method')
+    const peer = await claim.listen(async () => ({ message_id: 'x' }))
+    peers.push(peer)
+
+    const net = await import('node:net')
+    const { sockPath } = await import('../shared/paths.js')
+    const result = await new Promise<string>((resolve, reject) => {
+      const socket = net.createConnection(sockPath('unknown-method'))
+      let buf = ''
+      socket.on('connect', () => {
+        socket.write(JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'nonexistent_method',
+          params: {},
+        }) + '\n')
+      })
+      socket.on('data', chunk => {
+        buf += chunk.toString()
+        const nl = buf.indexOf('\n')
+        if (nl !== -1) {
+          resolve(buf.slice(0, nl))
+          socket.destroy()
+        }
+      })
+      socket.on('error', reject)
+    })
+
+    const msg = JSON.parse(result)
+    expect(msg.error).toBeDefined()
+    expect(msg.error.code).toBe(-32601)
+  })
+
+  it('returns parse error for malformed JSON', async () => {
+    const claim = await claimName('bad-json')
+    const peer = await claim.listen(async () => ({ message_id: 'x' }))
+    peers.push(peer)
+
+    const net = await import('node:net')
+    const { sockPath } = await import('../shared/paths.js')
+    const result = await new Promise<string>((resolve, reject) => {
+      const socket = net.createConnection(sockPath('bad-json'))
+      let buf = ''
+      socket.on('connect', () => {
+        socket.write('not json at all\n')
+      })
+      socket.on('data', chunk => {
+        buf += chunk.toString()
+        const nl = buf.indexOf('\n')
+        if (nl !== -1) {
+          resolve(buf.slice(0, nl))
+          socket.destroy()
+        }
+      })
+      socket.on('error', reject)
+    })
+
+    const msg = JSON.parse(result)
+    expect(msg.error).toBeDefined()
+    expect(msg.error.code).toBe(-32700)
+  })
 })
