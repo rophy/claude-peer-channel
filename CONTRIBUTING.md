@@ -29,27 +29,32 @@ After changing channel code, run `npm run build:plugin` to refresh the committed
 
 ## Running from a local checkout
 
-Instead of installing through the plugin marketplace, register the channel directly as an MCP server in `~/.claude.json`:
+The repo itself is a plugin marketplace (`.claude-plugin/marketplace.json`), so Claude Code's plugin system can be pointed at the local path:
 
-```json
-{
-  "mcpServers": {
-    "peer-channel": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["/absolute/path/to/claude-peer-channel/plugin/channel.js"]
-    }
-  }
-}
+```
+/plugin marketplace add /absolute/path/to/claude-peer-channel
+/plugin install peer-channel@rophy-plugins
 ```
 
-Then launch Claude Code with:
+Then launch Claude Code the same way a user would:
 
 ```bash
-claude --dangerously-load-development-channels server:peer-channel
+claude --dangerously-load-development-channels plugin:peer-channel@rophy-plugins
 ```
 
-When loaded this way, inbound messages arrive with `source="server:peer-channel"` instead of `source="plugin:peer-channel:peer-channel"`. The `from`, `message_id`, and `in_reply_to` attributes are stable across both modes.
+This loads the committed `plugin/channel.js` bundle. After any code change, rebuild and refresh:
+
+```bash
+npm run build:plugin
+```
+
+then in Claude Code:
+
+```
+/plugin marketplace update rophy-plugins
+```
+
+and restart the session.
 
 ## Repo layout
 
