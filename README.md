@@ -36,19 +36,7 @@ From within Claude Code:
 /plugin install peer-channel@rophy-plugins
 ```
 
-Alternatively, register the channel directly via `~/.claude.json`:
-
-```json
-{
-  "mcpServers": {
-    "peer-channel": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["/absolute/path/to/claude-peer-channel/plugin/channel.js"]
-    }
-  }
-}
-```
+(To run from a local checkout for development, see [CONTRIBUTING.md](CONTRIBUTING.md).)
 
 ## Usage
 
@@ -56,8 +44,6 @@ Launch any Claude Code session with the channel enabled:
 
 ```bash
 claude --dangerously-load-development-channels plugin:peer-channel@rophy-plugins
-# or, if you registered via ~/.claude.json:
-claude --dangerously-load-development-channels server:peer-channel
 ```
 
 The `--dangerously-load-development-channels` flag is required during the channels research preview until peer-channel is on the approved allowlist.
@@ -82,8 +68,6 @@ Messages from peer sessions arrive in the receiving Claude's context as:
 message body
 </channel>
 ```
-
-(When loaded via a plain `mcpServers` entry instead of the plugin marketplace, the `source` attribute is `server:peer-channel` instead. The `from`, `message_id`, and `in_reply_to` attributes are stable across both install modes.)
 
 ## Session naming
 
@@ -131,16 +115,9 @@ Error codes follow JSON-RPC conventions (`-32700` parse, `-32600` invalid reques
     └── bob.sock
 ```
 
-## Development
+## Contributing
 
-```bash
-npm install
-npm run dev:channel     # run channel standalone (useful for debugging)
-npm run build           # compile to dist/
-npm run build:plugin    # bundle channel into plugin/channel.js (committed)
-```
-
-After changing channel code, run `npm run build:plugin` to refresh the committed bundle before publishing a new plugin version.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, build commands, and running the plugin from a source checkout.
 
 ## License
 
