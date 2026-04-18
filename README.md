@@ -2,6 +2,8 @@
 
 Lets multiple Claude Code sessions talk to each other locally.
 
+![peer-channel in action](docs/peer-channel-in-action.png)
+
 ## Architecture
 
 ```
