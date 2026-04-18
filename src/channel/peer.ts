@@ -75,15 +75,17 @@ export async function claimName(requestedName: string): Promise<NameClaim> {
     released = true
     try {
       await releaseLock()
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error(`[peer-channel] failed to release lock for "${name}": ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
   try {
     unlinkSync(sockPath(name))
-  } catch {
-    /* stale socket may or may not exist */
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error(`[peer-channel] unexpected error removing stale socket: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   process.on('exit', () => {
@@ -120,8 +122,10 @@ export async function claimName(requestedName: string): Promise<NameClaim> {
         await new Promise<void>(resolve => server.close(() => resolve()))
         try {
           unlinkSync(sp)
-        } catch {
-          /* ignore */
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+            console.error(`[peer-channel] unexpected error removing socket on close: ${err instanceof Error ? err.message : String(err)}`)
+          }
         }
         await doRelease()
       }
@@ -146,64 +150,71 @@ function handleConn(
   let handled = false
 
   socket.on('data', async chunk => {
-    if (handled) return
-    buf += chunk.toString('utf8')
-    const nl = buf.indexOf('\n')
-    if (nl === -1) return
-    handled = true
-    const line = buf.slice(0, nl).trim()
-
-    let req: JsonRpcRequest
     try {
-      req = JSON.parse(line)
-    } catch {
-      sendError(socket, null, ERROR_CODES.PARSE, 'parse error')
-      socket.end()
-      return
-    }
-    if (req.jsonrpc !== '2.0' || typeof req.method !== 'string') {
-      sendError(socket, req.id ?? null, ERROR_CODES.INVALID_REQUEST, 'invalid request')
-      socket.end()
-      return
-    }
+      if (handled) return
+      buf += chunk.toString('utf8')
+      const nl = buf.indexOf('\n')
+      if (nl === -1) return
+      handled = true
+      const line = buf.slice(0, nl).trim()
 
-    try {
-      if (req.method === METHODS.ping) {
-        const result: PingResult = {
-          name: myName,
-          version: VERSION,
-          protocol: PROTOCOL_VERSION,
-        }
-        sendResult(socket, req.id, result)
-      } else if (req.method === METHODS.deliver) {
-        const parsed = DeliverParams.safeParse(req.params)
-        if (!parsed.success) {
-          sendError(socket, req.id, ERROR_CODES.INVALID_PARAMS, 'invalid params')
-        } else {
-          const result = await handleDeliver(parsed.data)
+      let req: JsonRpcRequest
+      try {
+        req = JSON.parse(line)
+      } catch {
+        sendError(socket, null, ERROR_CODES.PARSE, 'parse error')
+        socket.end()
+        return
+      }
+      if (req.jsonrpc !== '2.0' || typeof req.method !== 'string') {
+        sendError(socket, req.id ?? null, ERROR_CODES.INVALID_REQUEST, 'invalid request')
+        socket.end()
+        return
+      }
+
+      try {
+        if (req.method === METHODS.ping) {
+          const result: PingResult = {
+            name: myName,
+            version: VERSION,
+            protocol: PROTOCOL_VERSION,
+          }
           sendResult(socket, req.id, result)
+        } else if (req.method === METHODS.deliver) {
+          const parsed = DeliverParams.safeParse(req.params)
+          if (!parsed.success) {
+            sendError(socket, req.id, ERROR_CODES.INVALID_PARAMS, 'invalid params')
+          } else {
+            const result = await handleDeliver(parsed.data)
+            sendResult(socket, req.id, result)
+          }
+        } else {
+          sendError(
+            socket,
+            req.id,
+            ERROR_CODES.METHOD_NOT_FOUND,
+            `method not found: ${req.method}`,
+          )
         }
-      } else {
+      } catch (err) {
         sendError(
           socket,
-          req.id,
-          ERROR_CODES.METHOD_NOT_FOUND,
-          `method not found: ${req.method}`,
+          req.id ?? null,
+          ERROR_CODES.INTERNAL,
+          err instanceof Error ? err.message : 'internal error',
         )
       }
+      socket.end()
     } catch (err) {
-      sendError(
-        socket,
-        req.id ?? null,
-        ERROR_CODES.INTERNAL,
-        err instanceof Error ? err.message : 'internal error',
-      )
+      console.error(`[peer-channel] unhandled error in connection handler: ${err instanceof Error ? err.message : String(err)}`)
+      try { socket.destroy() } catch { /* ignore */ }
     }
-    socket.end()
   })
 
-  socket.on('error', () => {
-    /* one-shot peer connections often close abruptly; ignore */
+  socket.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code !== 'ECONNRESET' && err.code !== 'EPIPE') {
+      console.error(`[peer-channel] unexpected socket error from peer: ${err.message}`)
+    }
   })
 }
 
@@ -260,7 +271,10 @@ export async function listPeers(selfName: string): Promise<string[]> {
 async function safeCheck(name: string): Promise<boolean> {
   try {
     return await checkLock(lockTarget(name), { realpath: false, stale: 10000 })
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error(`[peer-channel] unexpected error checking lock for "${name}": ${err instanceof Error ? err.message : String(err)}`)
+    }
     return false
   }
 }
