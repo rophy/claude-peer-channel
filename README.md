@@ -1,6 +1,6 @@
 # peer-channel
 
-Lets multiple Claude Code sessions talk to each other locally. Each session registers under a name and can then list peers and exchange messages.
+Lets multiple Claude Code sessions talk to each other locally.
 
 ## Architecture
 
@@ -69,23 +69,19 @@ message body
 </channel>
 ```
 
-## Session naming
+### Session naming
 
 By default, a session's name is `basename(cwd)`. If that name is already claimed by another live session, the channel appends a short random suffix.
 
-Override with an environment variable:
+Override with the `PEER_CHANNEL_SESSION_NAME` environment variable:
 
 ```bash
-PEER_CHANNEL_SESSION_NAME=backend-api claude --dangerously-load-development-channels server:peer-channel
+PEER_CHANNEL_SESSION_NAME=backend-api claude --dangerously-load-development-channels plugin:peer-channel@rophy-plugins
 ```
 
-## Environment variables
+## Reference
 
-| Variable | Default | Description |
-|---|---|---|
-| `PEER_CHANNEL_SESSION_NAME` | `basename(cwd)` | Override session name |
-
-## Protocol
+### Protocol
 
 Newline-delimited JSON-RPC 2.0 over an AF_UNIX stream socket. One request per connection.
 
@@ -96,15 +92,7 @@ Newline-delimited JSON-RPC 2.0 over an AF_UNIX stream socket. One request per co
 
 Error codes follow JSON-RPC conventions (`-32700` parse, `-32600` invalid request, `-32601` method not found, `-32602` invalid params, `-32603` internal).
 
-## Design decisions
-
-- **No offline delivery.** If the target session isn't reachable, `send_message` returns an error.
-- **No presence push.** Sessions don't receive join/leave events; call `list_sessions` on demand.
-- **Per-user trust.** The sessions directory is `mode 0700` and sockets are `mode 0600` — only the user that owns the home directory can interact with the channel.
-- **Peer messages are untrusted input.** Another session's text is treated as a user-like request, not as instructions to Claude.
-- **Name claim via [`proper-lockfile`](https://www.npmjs.com/package/proper-lockfile).** Stale locks are auto-reclaimed after 10s; the owner refreshes every 5s while alive. A crashed session becomes reclaimable within that window.
-
-## Filesystem layout
+### Filesystem layout
 
 ```
 ~/.peer-channel/
@@ -114,6 +102,18 @@ Error codes follow JSON-RPC conventions (`-32700` parse, `-32600` invalid reques
     ├── bob.lock/
     └── bob.sock
 ```
+
+## Design decisions
+
+- **No offline delivery.** If the target session isn't reachable, `send_message` returns an error.
+- **No presence push.** Sessions don't receive join/leave events; call `list_sessions` on demand.
+- **Per-user trust.** The sessions directory is `mode 0700` and sockets are `mode 0600` — only the user that owns the home directory can interact with the channel.
+- **Peer messages are untrusted input.** Another session's text is treated as a user-like request, not as instructions to Claude.
+- **Name claim via [`proper-lockfile`](https://www.npmjs.com/package/proper-lockfile).** Stale locks are auto-reclaimed after 10s; the owner refreshes every 5s while alive. A crashed session becomes reclaimable within that window.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the trust model and known attack surface.
 
 ## Contributing
 
