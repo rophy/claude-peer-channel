@@ -56,7 +56,7 @@ export function buildMcpServer(selfName: string): McpBundle {
       {
         name: 'send_message',
         description:
-          'Send a text message to another Claude Code session. Pass in_reply_to when replying to a specific inbound message.',
+          'Send a message to another Claude Code session via peer-channel. This is the only way to deliver text to other sessions — writing in conversation output will NOT reach them. Pass in_reply_to when replying to a specific inbound message.',
         inputSchema: {
           type: 'object',
           properties: {

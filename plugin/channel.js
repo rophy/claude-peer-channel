@@ -19601,12 +19601,16 @@ async function claimName(requestedName) {
     released = true;
     try {
       await releaseLock();
-    } catch {
+    } catch (err) {
+      console.error(`[peer-channel] failed to release lock for "${name}": ${err instanceof Error ? err.message : String(err)}`);
     }
   };
   try {
     (0, import_node_fs.unlinkSync)(sockPath(name));
-  } catch {
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.error(`[peer-channel] unexpected error removing stale socket: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   process.on("exit", () => {
     try {
@@ -19639,7 +19643,10 @@ async function claimName(requestedName) {
         await new Promise((resolve) => server.close(() => resolve()));
         try {
           (0, import_node_fs.unlinkSync)(sp);
-        } catch {
+        } catch (err) {
+          if (err.code !== "ENOENT") {
+            console.error(`[peer-channel] unexpected error removing socket on close: ${err instanceof Error ? err.message : String(err)}`);
+          }
         }
         await doRelease();
       };
@@ -19656,60 +19663,71 @@ function handleConn(socket, myName, handleDeliver) {
   let buf = "";
   let handled = false;
   socket.on("data", async (chunk) => {
-    if (handled) return;
-    buf += chunk.toString("utf8");
-    const nl = buf.indexOf("\n");
-    if (nl === -1) return;
-    handled = true;
-    const line = buf.slice(0, nl).trim();
-    let req;
     try {
-      req = JSON.parse(line);
-    } catch {
-      sendError(socket, null, ERROR_CODES.PARSE, "parse error");
-      socket.end();
-      return;
-    }
-    if (req.jsonrpc !== "2.0" || typeof req.method !== "string") {
-      sendError(socket, req.id ?? null, ERROR_CODES.INVALID_REQUEST, "invalid request");
-      socket.end();
-      return;
-    }
-    try {
-      if (req.method === METHODS.ping) {
-        const result = {
-          name: myName,
-          version: VERSION,
-          protocol: PROTOCOL_VERSION
-        };
-        sendResult(socket, req.id, result);
-      } else if (req.method === METHODS.deliver) {
-        const parsed = DeliverParams.safeParse(req.params);
-        if (!parsed.success) {
-          sendError(socket, req.id, ERROR_CODES.INVALID_PARAMS, "invalid params");
-        } else {
-          const result = await handleDeliver(parsed.data);
+      if (handled) return;
+      buf += chunk.toString("utf8");
+      const nl = buf.indexOf("\n");
+      if (nl === -1) return;
+      handled = true;
+      const line = buf.slice(0, nl).trim();
+      let req;
+      try {
+        req = JSON.parse(line);
+      } catch {
+        sendError(socket, null, ERROR_CODES.PARSE, "parse error");
+        socket.end();
+        return;
+      }
+      if (req.jsonrpc !== "2.0" || typeof req.method !== "string") {
+        sendError(socket, req.id ?? null, ERROR_CODES.INVALID_REQUEST, "invalid request");
+        socket.end();
+        return;
+      }
+      try {
+        if (req.method === METHODS.ping) {
+          const result = {
+            name: myName,
+            version: VERSION,
+            protocol: PROTOCOL_VERSION
+          };
           sendResult(socket, req.id, result);
+        } else if (req.method === METHODS.deliver) {
+          const parsed = DeliverParams.safeParse(req.params);
+          if (!parsed.success) {
+            sendError(socket, req.id, ERROR_CODES.INVALID_PARAMS, "invalid params");
+          } else {
+            const result = await handleDeliver(parsed.data);
+            sendResult(socket, req.id, result);
+          }
+        } else {
+          sendError(
+            socket,
+            req.id,
+            ERROR_CODES.METHOD_NOT_FOUND,
+            `method not found: ${req.method}`
+          );
         }
-      } else {
+      } catch (err) {
         sendError(
           socket,
-          req.id,
-          ERROR_CODES.METHOD_NOT_FOUND,
-          `method not found: ${req.method}`
+          req.id ?? null,
+          ERROR_CODES.INTERNAL,
+          err instanceof Error ? err.message : "internal error"
         );
       }
+      socket.end();
     } catch (err) {
-      sendError(
-        socket,
-        req.id ?? null,
-        ERROR_CODES.INTERNAL,
-        err instanceof Error ? err.message : "internal error"
-      );
+      console.error(`[peer-channel] unhandled error in connection handler: ${err instanceof Error ? err.message : String(err)}`);
+      try {
+        socket.destroy();
+      } catch {
+      }
     }
-    socket.end();
   });
-  socket.on("error", () => {
+  socket.on("error", (err) => {
+    if (err.code !== "ECONNRESET" && err.code !== "EPIPE") {
+      console.error(`[peer-channel] unexpected socket error from peer: ${err.message}`);
+    }
   });
 }
 function sendResult(socket, id, result) {
@@ -19751,7 +19769,10 @@ async function listPeers(selfName) {
 async function safeCheck(name) {
   try {
     return await (0, import_proper_lockfile.check)(lockTarget(name), { realpath: false, stale: 1e4 });
-  } catch {
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.error(`[peer-channel] unexpected error checking lock for "${name}": ${err instanceof Error ? err.message : String(err)}`);
+    }
     return false;
   }
 }
@@ -19859,7 +19880,7 @@ function buildMcpServer(selfName) {
       },
       {
         name: "send_message",
-        description: "Send a text message to another Claude Code session. Pass in_reply_to when replying to a specific inbound message.",
+        description: "Send a message to another Claude Code session via peer-channel. This is the only way to deliver text to other sessions \u2014 writing in conversation output will NOT reach them. Pass in_reply_to when replying to a specific inbound message.",
         inputSchema: {
           type: "object",
           properties: {
