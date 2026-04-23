@@ -23,7 +23,7 @@ export interface McpBundle {
 
 export function buildMcpServer(selfName: string): McpBundle {
   const server = new Server(
-    { name: 'peer-channel', version: '0.1.0' },
+    { name: 'peer-channel', version: '0.1.1' },
     {
       capabilities: {
         experimental: { 'claude/channel': {} },
