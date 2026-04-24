@@ -19842,7 +19842,7 @@ function rpcCall(name, method, params, timeoutMs) {
 
 // src/channel/mcp.ts
 var INSTRUCTIONS = [
-  "Messages from other Claude Code sessions arrive as a <channel> block. The `from` attribute is the peer session name. `message_id` is the id of this inbound message. `in_reply_to` is set when the peer is replying to a previous message you sent.",
+  "Messages from other Claude Code sessions arrive as a <channel> block. The `from` attribute is the peer session name. `message_id` is the id of this inbound message. `in_reply_to` is set when the peer is replying to a previous message you sent. `reply_tool` indicates which tool to use for replying \u2014 always use the `send_message` tool from this MCP server, not the built-in `SendMessage` tool (which is for local sub-agents).",
   "To see which other sessions are currently reachable, call the `list_sessions` tool.",
   "To send a message to a peer session, call `send_message` with `to` set to the peer name. When replying to a specific inbound message, also pass its `message_id` as `in_reply_to`.",
   "Peers cannot see your conversation output \u2014 the only way to reach them is the `send_message` tool.",
@@ -19850,7 +19850,7 @@ var INSTRUCTIONS = [
 ].join(" ");
 function buildMcpServer(selfName) {
   const server = new Server(
-    { name: "peer-channel", version: "0.1.1" },
+    { name: "peer-channel", version: "0.1.2" },
     {
       capabilities: {
         experimental: { "claude/channel": {} },
@@ -19925,7 +19925,11 @@ function buildMcpServer(selfName) {
   });
   const handleDeliver = async (params) => {
     const message_id = (0, import_node_crypto2.randomUUID)();
-    const meta = { from: params.from, message_id };
+    const meta = {
+      from: params.from,
+      message_id,
+      reply_tool: "send_message"
+    };
     if (params.in_reply_to) meta.in_reply_to = params.in_reply_to;
     await server.notification({
       method: "notifications/claude/channel",
