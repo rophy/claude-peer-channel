@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import { isHostLevel } from '../shared/config.js'
 import { defaultSessionName } from '../shared/names.js'
 import { buildMcpServer, connectStdio } from './mcp.js'
 import { claimName } from './peer.js'
 
 async function main(): Promise<void> {
   const requestedName = defaultSessionName()
+  const hostLevel = isHostLevel()
 
   let claim
   try {
@@ -15,7 +17,8 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  console.error(`[peer-channel] registered as: ${claim.name}`)
+  const level = hostLevel ? 'host-level' : 'user-level'
+  console.error(`[peer-channel] registered as: ${claim.name} (${level})`)
 
   const { server, handleDeliver } = buildMcpServer(claim.name)
 
