@@ -22,6 +22,11 @@ export type PingResult = z.infer<typeof PingResult>
 export type DeliverParams = z.infer<typeof DeliverParams>
 export type DeliverResult = z.infer<typeof DeliverResult>
 
+export interface PeerContext {
+  peer_user?: string
+  peer_uid?: number
+}
+
 export const METHODS = {
   ping: 'ping',
   deliver: 'deliver',

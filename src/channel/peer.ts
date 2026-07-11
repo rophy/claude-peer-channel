@@ -1,14 +1,25 @@
-import { mkdirSync, readdirSync, unlinkSync } from 'node:fs'
+import { chmodSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs'
 import * as net from 'node:net'
+import { join } from 'node:path'
 import { check as checkLock, lock as acquireLock } from 'proper-lockfile'
+import { isHostLevel } from '../shared/config.js'
+import { getCurrentUser } from '../shared/identity.js'
 import { withSuffix } from '../shared/names.js'
-import { SESSIONS_DIR, lockTarget, sockPath } from '../shared/paths.js'
+import {
+  HOST_SESSIONS_DIR,
+  SESSIONS_DIR,
+  hostLockTarget,
+  hostSockPath,
+  lockTarget,
+  sockPath,
+} from '../shared/paths.js'
 import {
   DeliverParams,
   DeliverResult,
   ERROR_CODES,
   METHODS,
   PROTOCOL_VERSION,
+  PeerContext,
   PingResult,
 } from '../shared/protocol.js'
 
@@ -23,7 +34,26 @@ const LOCK_OPTS = {
   },
 } as const
 
-export type DeliverHandler = (params: DeliverParams) => Promise<DeliverResult>
+export type DeliverHandler = (
+  params: DeliverParams,
+  context?: PeerContext,
+) => Promise<DeliverResult>
+
+function resolveSocketPath(name: string): string {
+  const slash = name.indexOf('/')
+  if (slash !== -1) {
+    return hostSockPath(name.slice(0, slash), name.slice(slash + 1))
+  }
+  return sockPath(name)
+}
+
+function resolveLockTarget(name: string): string {
+  const slash = name.indexOf('/')
+  if (slash !== -1) {
+    return hostLockTarget(name.slice(0, slash), name.slice(slash + 1))
+  }
+  return lockTarget(name)
+}
 
 interface JsonRpcRequest {
   jsonrpc: '2.0'
@@ -44,30 +74,47 @@ export interface Peer {
 }
 
 export async function claimName(requestedName: string): Promise<NameClaim> {
-  mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 })
-
-  let candidate = requestedName
+  const hostLevel = isHostLevel()
+  let name: string
   let release: (() => Promise<void>) | null = null
 
-  for (let attempt = 0; attempt < 10; attempt++) {
+  if (hostLevel) {
+    const { username } = getCurrentUser()
+    mkdirSync(join(HOST_SESSIONS_DIR, username), { recursive: true, mode: 0o755 })
+    name = `${username}/${requestedName}`
     try {
-      release = await acquireLock(lockTarget(candidate), LOCK_OPTS)
-      break
+      release = await acquireLock(hostLockTarget(username, requestedName), LOCK_OPTS)
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code === 'ELOCKED') {
-        candidate = withSuffix(requestedName)
-        continue
+        throw new Error(
+          `Host-level session '${username}/${requestedName}' is already running. Only one instance allowed.`,
+        )
       }
       throw err
     }
-  }
-  if (!release) {
-    throw new Error(
-      `could not claim a session name after 10 attempts (base: ${requestedName})`,
-    )
+  } else {
+    mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 })
+    let candidate = requestedName
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        release = await acquireLock(lockTarget(candidate), LOCK_OPTS)
+        break
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code === 'ELOCKED') {
+          candidate = withSuffix(requestedName)
+          continue
+        }
+        throw err
+      }
+    }
+    if (!release) {
+      throw new Error(
+        `could not claim a session name after 10 attempts (base: ${requestedName})`,
+      )
+    }
+    name = candidate
   }
 
-  const name = candidate
   const releaseLock = release
   let released = false
   const doRelease = async (): Promise<void> => {
@@ -80,8 +127,10 @@ export async function claimName(requestedName: string): Promise<NameClaim> {
     }
   }
 
+  const sp = resolveSocketPath(name)
+
   try {
-    unlinkSync(sockPath(name))
+    unlinkSync(sp)
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       console.error(`[peer-channel] unexpected error removing stale socket: ${err instanceof Error ? err.message : String(err)}`)
@@ -90,7 +139,7 @@ export async function claimName(requestedName: string): Promise<NameClaim> {
 
   process.on('exit', () => {
     try {
-      unlinkSync(sockPath(name))
+      unlinkSync(sp)
     } catch {
       /* ignore */
     }
@@ -100,8 +149,9 @@ export async function claimName(requestedName: string): Promise<NameClaim> {
     name,
     release: doRelease,
     async listen(handler: DeliverHandler): Promise<Peer> {
-      const sp = sockPath(name)
-      const server = net.createServer(socket => handleConn(socket, name, handler))
+      const server = net.createServer(socket =>
+        handleConn(socket, name, handler, hostLevel),
+      )
       try {
         await new Promise<void>((resolve, reject) => {
           server.once('error', reject)
@@ -113,6 +163,10 @@ export async function claimName(requestedName: string): Promise<NameClaim> {
       } catch (err) {
         await doRelease()
         throw err
+      }
+
+      if (hostLevel) {
+        chmodSync(sp, 0o666)
       }
 
       let closed = false
@@ -145,6 +199,7 @@ function handleConn(
   socket: net.Socket,
   myName: string,
   handleDeliver: DeliverHandler,
+  hostLevel: boolean,
 ): void {
   let buf = ''
   let handled = false
@@ -185,7 +240,14 @@ function handleConn(
           if (!parsed.success) {
             sendError(socket, req.id, ERROR_CODES.INVALID_PARAMS, 'invalid params')
           } else {
-            const result = await handleDeliver(parsed.data)
+            let context: PeerContext | undefined
+            if (hostLevel) {
+              const slash = parsed.data.from.indexOf('/')
+              if (slash !== -1) {
+                context = { peer_user: parsed.data.from.slice(0, slash) }
+              }
+            }
+            const result = await handleDeliver(parsed.data, context)
             sendResult(socket, req.id, result)
           }
         } else {
@@ -236,19 +298,40 @@ function sendError(
 }
 
 export async function listPeers(selfName: string): Promise<string[]> {
-  let entries: string[]
-  try {
-    entries = readdirSync(SESSIONS_DIR)
-  } catch {
-    return []
-  }
   const names = new Set<string>()
-  for (const e of entries) {
-    if (e.endsWith('.lock')) {
-      const n = e.slice(0, -'.lock'.length)
-      if (n) names.add(n)
+
+  try {
+    for (const e of readdirSync(SESSIONS_DIR)) {
+      if (e.endsWith('.lock')) {
+        const n = e.slice(0, -'.lock'.length)
+        if (n) names.add(n)
+      }
     }
+  } catch {
+    /* ignore */
   }
+
+  try {
+    for (const userEntry of readdirSync(HOST_SESSIONS_DIR, { withFileTypes: true })) {
+      if (!userEntry.isDirectory()) continue
+      const username = userEntry.name
+      let subEntries: string[]
+      try {
+        subEntries = readdirSync(join(HOST_SESSIONS_DIR, username))
+      } catch {
+        continue
+      }
+      for (const e of subEntries) {
+        if (e.endsWith('.lock')) {
+          const n = e.slice(0, -'.lock'.length)
+          if (n) names.add(`${username}/${n}`)
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
   const candidates = [...names].filter(n => n !== selfName)
 
   const probed = await Promise.all(
@@ -256,7 +339,7 @@ export async function listPeers(selfName: string): Promise<string[]> {
       const locked = await safeCheck(n)
       if (!locked) {
         try {
-          unlinkSync(sockPath(n))
+          unlinkSync(resolveSocketPath(n))
         } catch {
           /* ignore */
         }
@@ -270,7 +353,7 @@ export async function listPeers(selfName: string): Promise<string[]> {
 
 async function safeCheck(name: string): Promise<boolean> {
   try {
-    return await checkLock(lockTarget(name), { realpath: false, stale: 10000 })
+    return await checkLock(resolveLockTarget(name), { realpath: false, stale: 10000 })
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       console.error(`[peer-channel] unexpected error checking lock for "${name}": ${err instanceof Error ? err.message : String(err)}`)
@@ -306,7 +389,7 @@ function rpcCall(
   timeoutMs: number,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection(sockPath(name))
+    const socket = net.createConnection(resolveSocketPath(name))
     let buf = ''
     let settled = false
 
