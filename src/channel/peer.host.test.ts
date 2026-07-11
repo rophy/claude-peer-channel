@@ -129,4 +129,20 @@ describe('host-level sendDeliver', () => {
     expect(received).toEqual({ from: 'testuser/sender', text: 'hello' })
     expect(ctx).toEqual({ peer_user: 'testuser' })
   })
+
+  it('sets peer_user to unknown for a user-level sender name with no slash', async () => {
+    const claim = await claimName('receiver-unknown')
+    let ctx: PeerContext | undefined
+    const peer = await claim.listen(async (_params, context) => {
+      ctx = context
+      return { message_id: 'reply-2' }
+    })
+    peers.push(peer)
+
+    await sendDeliver('testuser/receiver-unknown', {
+      from: 'infra',
+      text: 'hello',
+    })
+    expect(ctx).toEqual({ peer_user: 'unknown' })
+  })
 })

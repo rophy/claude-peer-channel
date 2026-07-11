@@ -254,6 +254,8 @@ function handleConn(
               const slash = parsed.data.from.indexOf('/')
               if (slash !== -1) {
                 context = { peer_user: parsed.data.from.slice(0, slash) }
+              } else {
+                context = { peer_user: 'unknown' }
               }
             }
             const result = await handleDeliver(parsed.data, context)
@@ -455,7 +457,12 @@ export async function sendDeliverWithReply(
       settled = true
       clearTimeout(timer)
       socket.destroy()
-      reject(err)
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT' || code === 'ECONNREFUSED') {
+        reject(new Error(`peer "${target}" is not reachable (socket ${code === 'ENOENT' ? 'not found' : 'refused'})`))
+      } else {
+        reject(err)
+      }
     }
 
     socket.on('error', fail)
@@ -569,7 +576,12 @@ function rpcCall(
       settled = true
       clearTimeout(timer)
       socket.destroy()
-      reject(err)
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT' || code === 'ECONNREFUSED') {
+        reject(new Error(`peer "${name}" is not reachable (socket ${code === 'ENOENT' ? 'not found' : 'refused'})`))
+      } else {
+        reject(err)
+      }
     }
     const ok = (val: unknown): void => {
       if (settled) return
