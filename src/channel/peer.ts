@@ -34,6 +34,13 @@ const LOCK_OPTS = {
   },
 } as const
 
+interface PendingReply {
+  socket: net.Socket
+  timer: ReturnType<typeof setTimeout>
+}
+
+const pendingReplies = new Map<string, PendingReply>()
+
 export type DeliverHandler = (
   params: DeliverParams,
   context?: PeerContext,
@@ -227,6 +234,8 @@ function handleConn(
         return
       }
 
+      let keepOpen = false
+
       try {
         if (req.method === METHODS.ping) {
           const result: PingResult = {
@@ -249,6 +258,21 @@ function handleConn(
             }
             const result = await handleDeliver(parsed.data, context)
             sendResult(socket, req.id, result)
+
+            if (parsed.data.await_reply) {
+              keepOpen = true
+              const messageId = result.message_id
+              const timer = setTimeout(() => {
+                pendingReplies.delete(messageId)
+                socket.destroy()
+              }, parsed.data.await_reply * 1000)
+              timer.unref()
+              pendingReplies.set(messageId, { socket, timer })
+              socket.on('close', () => {
+                clearTimeout(timer)
+                pendingReplies.delete(messageId)
+              })
+            }
           }
         } else {
           sendError(
@@ -266,7 +290,9 @@ function handleConn(
           err instanceof Error ? err.message : 'internal error',
         )
       }
-      socket.end()
+      if (!keepOpen) {
+        socket.end()
+      }
     } catch (err) {
       console.error(`[peer-channel] unhandled error in connection handler: ${err instanceof Error ? err.message : String(err)}`)
       try { socket.destroy() } catch { /* ignore */ }
@@ -380,6 +406,144 @@ export async function sendDeliver(
   const parsed = DeliverResult.safeParse(res)
   if (!parsed.success) throw new Error('malformed deliver response')
   return parsed.data
+}
+
+export function replyViaPending(
+  messageId: string,
+  params: DeliverParams,
+): Promise<boolean> {
+  const pending = pendingReplies.get(messageId)
+  if (!pending) return Promise.resolve(false)
+
+  pendingReplies.delete(messageId)
+  clearTimeout(pending.timer)
+
+  return new Promise<boolean>(resolve => {
+    const req = {
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: METHODS.deliver,
+      params,
+    }
+    pending.socket.write(JSON.stringify(req) + '\n', err => {
+      pending.socket.destroy()
+      resolve(!err)
+    })
+  })
+}
+
+export async function sendDeliverWithReply(
+  target: string,
+  params: DeliverParams,
+  timeoutMs = 5000,
+): Promise<{ result: DeliverResult; waitForReply: (cb: (reply: DeliverParams) => void) => void }> {
+  const sp = resolveSocketPath(target)
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(sp)
+    let buf = ''
+    let settled = false
+
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      reject(new Error(`timeout contacting "${target}"`))
+    }, timeoutMs)
+
+    const fail = (err: Error): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      socket.destroy()
+      reject(err)
+    }
+
+    socket.on('error', fail)
+    socket.on('connect', () => {
+      socket.write(
+        JSON.stringify({ jsonrpc: '2.0', id: 1, method: METHODS.deliver, params }) + '\n',
+      )
+    })
+    socket.on('data', chunk => {
+      buf += chunk.toString('utf8')
+      const nl = buf.indexOf('\n')
+      if (nl === -1) return
+
+      if (!settled) {
+        settled = true
+        clearTimeout(timer)
+        const line = buf.slice(0, nl)
+        buf = buf.slice(nl + 1)
+        try {
+          const msg = JSON.parse(line) as {
+            error?: { code: number; message: string }
+            result?: unknown
+          }
+          if (msg.error) {
+            socket.destroy()
+            reject(new Error(msg.error.message || 'rpc error'))
+            return
+          }
+          const parsed = DeliverResult.safeParse(msg.result)
+          if (!parsed.success) {
+            socket.destroy()
+            reject(new Error('malformed deliver response'))
+            return
+          }
+
+          const awaitSec = params.await_reply ?? 0
+          if (awaitSec <= 0) {
+            socket.destroy()
+            resolve({ result: parsed.data, waitForReply: () => {} })
+            return
+          }
+
+          let replyCb: ((reply: DeliverParams) => void) | null = null
+          const replyTimer = setTimeout(() => {
+            socket.destroy()
+          }, awaitSec * 1000)
+          replyTimer.unref()
+
+          socket.on('close', () => {
+            clearTimeout(replyTimer)
+          })
+
+          const checkReply = () => {
+            const nl2 = buf.indexOf('\n')
+            if (nl2 === -1) return
+            const replyLine = buf.slice(0, nl2)
+            buf = buf.slice(nl2 + 1)
+            clearTimeout(replyTimer)
+            try {
+              const replyMsg = JSON.parse(replyLine)
+              if (replyMsg.method === METHODS.deliver && replyMsg.params) {
+                const replyParsed = DeliverParams.safeParse(replyMsg.params)
+                if (replyParsed.success && replyCb) {
+                  replyCb(replyParsed.data)
+                }
+              }
+            } catch { /* ignore malformed reply */ }
+            socket.destroy()
+          }
+
+          checkReply()
+
+          socket.on('data', () => checkReply())
+
+          resolve({
+            result: parsed.data,
+            waitForReply: cb => { replyCb = cb },
+          })
+        } catch (e) {
+          socket.destroy()
+          reject(e instanceof Error ? e : new Error('parse error'))
+        }
+      }
+    })
+    socket.on('end', () => {
+      if (!settled) fail(new Error('connection closed without response'))
+    })
+  })
 }
 
 function rpcCall(

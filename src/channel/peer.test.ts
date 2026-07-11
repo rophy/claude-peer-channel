@@ -18,7 +18,7 @@ vi.mock('../shared/paths.js', () => ({
   sockPath: (name: string) => join(testSessionsDir, `${name}.sock`),
 }))
 
-import { claimName, listPeers, sendDeliver, type Peer } from './peer.js'
+import { claimName, listPeers, sendDeliver, replyViaPending, sendDeliverWithReply, type Peer } from './peer.js'
 
 beforeAll(() => {
   mkdirSync(testSessionsDir, { recursive: true })
@@ -236,5 +236,76 @@ describe('sendDeliver + handleConn round-trip', () => {
     const msg = JSON.parse(result)
     expect(msg.error).toBeDefined()
     expect(msg.error.code).toBe(-32700)
+  })
+})
+
+describe('reply-over-same-connection', () => {
+  const peers: Peer[] = []
+
+  afterEach(async () => {
+    for (const p of peers) await p.close()
+    peers.length = 0
+  })
+
+  it('sender receives reply over the same connection', async () => {
+    const claim = await claimName('reply-target')
+    const peer = await claim.listen(async params => {
+      return { message_id: 'msg-from-receiver' }
+    })
+    peers.push(peer)
+
+    const { result, waitForReply } = await sendDeliverWithReply(
+      'reply-target',
+      { from: 'reply-sender', text: 'hello', await_reply: 5 },
+      3000,
+    )
+    expect(result.message_id).toBe('msg-from-receiver')
+
+    const replyPromise = new Promise<any>(resolve => {
+      waitForReply(reply => resolve(reply))
+    })
+
+    await new Promise(r => setTimeout(r, 50))
+
+    const replied = await replyViaPending('msg-from-receiver', {
+      from: 'reply-target',
+      text: 'got it',
+      in_reply_to: 'msg-from-receiver',
+    })
+    expect(replied).toBe(true)
+
+    const reply = await replyPromise
+    expect(reply.from).toBe('reply-target')
+    expect(reply.text).toBe('got it')
+  })
+
+  it('replyViaPending returns false when no pending connection', async () => {
+    const replied = await replyViaPending('nonexistent-msg', {
+      from: 'x',
+      text: 'y',
+    })
+    expect(replied).toBe(false)
+  })
+
+  it('replyViaPending returns false after timeout', async () => {
+    const claim = await claimName('timeout-target')
+    const peer = await claim.listen(async params => {
+      return { message_id: 'timeout-msg' }
+    })
+    peers.push(peer)
+
+    await sendDeliverWithReply(
+      'timeout-target',
+      { from: 'timeout-sender', text: 'hi', await_reply: 1 },
+      3000,
+    )
+
+    await new Promise(resolve => setTimeout(resolve, 1500))
+
+    const replied = await replyViaPending('timeout-msg', {
+      from: 'timeout-target',
+      text: 'too late',
+    })
+    expect(replied).toBe(false)
   })
 })
