@@ -69,6 +69,13 @@ describe('list_sessions tool', () => {
     const result = await callTool(server, 'list_sessions')
     expect(result.content[0].text).toBe('No other sessions connected.')
   })
+
+  it('tags host-level peers in output', async () => {
+    mockedListPeers.mockResolvedValue(['alice', 'expose-web/default'])
+    const { server } = buildMcpServer('me')
+    const result = await callTool(server, 'list_sessions')
+    expect(result.content[0].text).toBe('- alice\n- expose-web/default [host]')
+  })
 })
 
 describe('send_message tool', () => {
@@ -119,5 +126,37 @@ describe('handleDeliver', () => {
         }),
       }),
     )
+  })
+})
+
+describe('handleDeliver with peer context', () => {
+  it('includes peer_user in notification meta for host-level messages', async () => {
+    const { server, handleDeliver } = buildMcpServer('receiver')
+    vi.spyOn(server, 'notification').mockResolvedValue(undefined)
+    const result = await handleDeliver(
+      { from: 'cat/myproject', text: 'hello' },
+      { peer_user: 'cat', peer_uid: 1001 },
+    )
+    expect(result.message_id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(server.notification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          meta: expect.objectContaining({
+            from: 'cat/myproject',
+            peer_user: 'cat',
+            peer_uid: '1001',
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('omits peer_user for user-level messages (no context)', async () => {
+    const { server, handleDeliver } = buildMcpServer('receiver')
+    vi.spyOn(server, 'notification').mockResolvedValue(undefined)
+    await handleDeliver({ from: 'alice', text: 'hi' })
+    const call = vi.mocked(server.notification).mock.calls[0][0] as any
+    expect(call.params.meta.peer_user).toBeUndefined()
+    expect(call.params.meta.peer_uid).toBeUndefined()
   })
 })
