@@ -14,6 +14,25 @@ This document describes the trust model and known attack surface of the `peer-ch
 
 If every process running as your user is trusted, the channel is safe. If any process running as your user is malicious or compromised, it can fully participate in the channel.
 
+### Host-level peers
+
+Sessions can opt in to host-level exposure, making them discoverable by sessions running as any Linux user on the same machine.
+
+- Host-level sockets live in `/run/peer-channel/{username}/` (directory mode `1777`, socket mode `0666`).
+- Any local user can connect to a host-level socket and send messages.
+- The sender's OS identity (`peer_user`, `peer_uid`) is included in notifications — derived from the socket path namespace, not self-asserted.
+- The `from` field remains self-asserted (same as user-level).
+- Prompt injection risk is higher for host-level peers because the sender may be a different, less-trusted user.
+
+Host-level sessions are opt-in only (`PEER_CHANNEL_HOST_LEVEL=true`). Default behavior is unchanged.
+
+| | User-level (default) | Host-level (opt-in) |
+|---|---|---|
+| Socket location | `~/.peer-channel/sessions/` | `/run/peer-channel/{username}/` |
+| Permissions | `0700` dir, `0600` socket | `1777` dir, `0666` socket |
+| Reachable by | same OS user | any local user |
+| Sender identity | self-asserted `from` only | `from` (self-asserted) + `peer_user`/`peer_uid` (OS-derived) |
+
 ## Attack surface
 
 - **The AF_UNIX socket at `~/.peer-channel/sessions/<name>.sock`.** Accepts NDJSON JSON-RPC 2.0 requests; validated with Zod schemas. Malformed payloads are rejected with standard JSON-RPC errors and not forwarded to Claude.
@@ -23,9 +42,10 @@ If every process running as your user is trusted, the channel is safe. If any pr
 
 ## In scope (defended against)
 
-- **Cross-user access.** Enforced by the OS via the `0700` directory and `0600` socket permissions the plugin sets.
+- **Cross-user access (user-level sessions).** Enforced by the OS via the `0700` directory and `0600` socket permissions the plugin sets.
 - **Malformed payloads.** Schema-validated; rejected without reaching Claude.
 - **Clearly labelled untrusted input.** Peer messages arrive wrapped in a `<channel>` element, and the MCP server instructs Claude to treat them as untrusted peer input rather than instructions.
+- **Host-level identity verification.** For host-level peers, the sender's OS user and uid are derived from the connecting socket's path namespace (`/run/peer-channel/{username}/`), not taken from a self-asserted field, and included in notifications alongside the self-asserted `from`.
 
 ## Out of scope (known non-goals)
 
@@ -55,6 +75,7 @@ Message bodies are not encrypted. While in transit they live in kernel socket bu
 ## Mitigations implemented
 
 - File permissions: `~/.peer-channel/sessions/` is `0700`, sockets are `0600`.
+- Host-level socket permissions: `/run/peer-channel/{username}/` is `1777`, sockets are `0666` — required for cross-user reachability, opt-in only, and paired with OS-derived sender identity rather than trusting a self-asserted field.
 - Protocol validation: Zod schemas reject malformed JSON-RPC before any handler runs.
 - Labelled untrusted input: peer messages are delivered inside `<channel>` blocks, with system instructions telling Claude they are untrusted.
 - No persistent storage of message bodies.

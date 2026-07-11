@@ -81,6 +81,40 @@ Override with the `PEER_CHANNEL_SESSION_NAME` environment variable:
 PEER_CHANNEL_SESSION_NAME=backend-api claude --dangerously-load-development-channels plugin:peer-channel@rophy-plugins
 ```
 
+### Host-Level Peers
+
+By default, sessions are only visible to other sessions running as the same OS user. To make a session discoverable by all local users (e.g. for a shared service), enable host-level mode:
+
+**Via environment variable:**
+```bash
+PEER_CHANNEL_HOST_LEVEL=true claude --dangerously-load-development-channels plugin:peer-channel@rophy-plugins
+```
+
+**Via project `.env` file:**
+```
+PEER_CHANNEL_HOST_LEVEL=true
+```
+
+The runtime env var takes precedence over `.env`.
+
+Host-level sessions register under `/run/peer-channel/{username}/` and are named `{username}/{session-name}`. Other sessions discover them automatically — no configuration needed on the discovery side.
+
+#### Setup (one-time, as root)
+
+```bash
+# Create the shared directory
+sudo tee /etc/tmpfiles.d/peer-channel.conf <<< 'd /run/peer-channel 1777 root root -'
+sudo systemd-tmpfiles --create
+```
+
+#### Host-level session naming
+
+Host-level peers always include the OS username prefix:
+- `expose-web/default` — user `expose-web`, session `default`
+- `cat/myproject` — user `cat`, session `myproject`
+
+Host-level sessions are singleton — if another instance with the same name is already running, the new one fails to start.
+
 ## Reference
 
 ### Protocol
@@ -97,12 +131,20 @@ Error codes follow JSON-RPC conventions (`-32700` parse, `-32600` invalid reques
 ### Filesystem layout
 
 ```
-~/.peer-channel/
+~/.peer-channel/                    # user-level (default)
 └── sessions/
     ├── alice.lock/    # directory, created by proper-lockfile
     ├── alice.sock     # AF_UNIX socket
     ├── bob.lock/
     └── bob.sock
+
+/run/peer-channel/                  # host-level (opt-in)
+├── expose-web/
+│   ├── default.lock/
+│   └── default.sock
+└── cat/
+    ├── myproject.lock/
+    └── myproject.sock
 ```
 
 ## Design decisions
