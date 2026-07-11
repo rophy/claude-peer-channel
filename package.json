@@ -1,6 +1,6 @@
 {
   "name": "claude-peer-channel",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Local hub that lets Claude Code sessions talk to each other via MCP channel",
   "type": "module",
   "bin": {

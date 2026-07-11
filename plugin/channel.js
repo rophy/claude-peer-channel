@@ -19941,7 +19941,7 @@ var INSTRUCTIONS = [
 ].join(" ");
 function buildMcpServer(selfName) {
   const server = new Server(
-    { name: "peer-channel", version: "0.1.2" },
+    { name: "peer-channel", version: "0.2.0" },
     {
       capabilities: {
         experimental: { "claude/channel": {} },
