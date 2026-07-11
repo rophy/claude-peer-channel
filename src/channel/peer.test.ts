@@ -126,7 +126,13 @@ describe('sendDeliver + handleConn round-trip', () => {
   it('rejects when target is not reachable', async () => {
     await expect(
       sendDeliver('nonexistent', { from: 'a', text: 'b' }, 500),
-    ).rejects.toThrow()
+    ).rejects.toThrow(/peer "nonexistent" is not reachable/)
+  })
+
+  it('gives a clear error when peer socket does not exist (sendDeliverWithReply)', async () => {
+    await expect(
+      sendDeliverWithReply('no-such-peer', { from: 'a', text: 'b' }, 500),
+    ).rejects.toThrow(/peer "no-such-peer" is not reachable/)
   })
 
   it('returns rpc error when handler throws', async () => {
