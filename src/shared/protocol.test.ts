@@ -37,6 +37,29 @@ describe('DeliverParams', () => {
   it('rejects missing text', () => {
     expect(DeliverParams.safeParse({ from: 'alice' }).success).toBe(false)
   })
+
+  it('accepts await_reply in DeliverParams', () => {
+    const result = DeliverParams.safeParse({
+      from: 'alice',
+      text: 'hello',
+      await_reply: 120,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.await_reply).toBe(120)
+    }
+  })
+
+  it('allows DeliverParams without await_reply', () => {
+    const result = DeliverParams.safeParse({
+      from: 'alice',
+      text: 'hello',
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.await_reply).toBeUndefined()
+    }
+  })
 })
 
 describe('DeliverResult', () => {

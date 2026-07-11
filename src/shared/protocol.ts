@@ -12,6 +12,7 @@ export const DeliverParams = z.object({
   from: z.string().min(1),
   text: z.string(),
   in_reply_to: z.string().optional(),
+  await_reply: z.number().positive().optional(),
 })
 
 export const DeliverResult = z.object({
