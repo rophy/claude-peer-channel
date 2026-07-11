@@ -19574,7 +19574,8 @@ var PingResult = external_exports.object({
 var DeliverParams = external_exports.object({
   from: external_exports.string().min(1),
   text: external_exports.string(),
-  in_reply_to: external_exports.string().optional()
+  in_reply_to: external_exports.string().optional(),
+  await_reply: external_exports.number().positive().optional()
 });
 var DeliverResult = external_exports.object({
   message_id: external_exports.string()
@@ -19602,6 +19603,7 @@ var LOCK_OPTS = {
     console.error(`[peer-channel] lock compromised: ${err.message}`);
   }
 };
+var pendingReplies = /* @__PURE__ */ new Map();
 function resolveSocketPath(name) {
   const slash = name.indexOf("/");
   if (slash !== -1) {
@@ -19750,6 +19752,7 @@ function handleConn(socket, myName, handleDeliver, hostLevel) {
         socket.end();
         return;
       }
+      let keepOpen = false;
       try {
         if (req.method === METHODS.ping) {
           const result = {
@@ -19768,10 +19771,26 @@ function handleConn(socket, myName, handleDeliver, hostLevel) {
               const slash = parsed.data.from.indexOf("/");
               if (slash !== -1) {
                 context = { peer_user: parsed.data.from.slice(0, slash) };
+              } else {
+                context = { peer_user: "unknown" };
               }
             }
             const result = await handleDeliver(parsed.data, context);
             sendResult(socket, req.id, result);
+            if (parsed.data.await_reply) {
+              keepOpen = true;
+              const messageId = result.message_id;
+              const timer = setTimeout(() => {
+                pendingReplies.delete(messageId);
+                socket.destroy();
+              }, parsed.data.await_reply * 1e3);
+              timer.unref();
+              pendingReplies.set(messageId, { socket, timer });
+              socket.on("close", () => {
+                clearTimeout(timer);
+                pendingReplies.delete(messageId);
+              });
+            }
           }
         } else {
           sendError(
@@ -19789,7 +19808,9 @@ function handleConn(socket, myName, handleDeliver, hostLevel) {
           err instanceof Error ? err.message : "internal error"
         );
       }
-      socket.end();
+      if (!keepOpen) {
+        socket.end();
+      }
     } catch (err) {
       console.error(`[peer-channel] unhandled error in connection handler: ${err instanceof Error ? err.message : String(err)}`);
       try {
@@ -19874,11 +19895,127 @@ async function ping(name, timeoutMs) {
     return false;
   }
 }
-async function sendDeliver(target, params, timeoutMs = 5e3) {
-  const res = await rpcCall(target, METHODS.deliver, params, timeoutMs);
-  const parsed = DeliverResult.safeParse(res);
-  if (!parsed.success) throw new Error("malformed deliver response");
-  return parsed.data;
+function replyViaPending(messageId, params) {
+  const pending = pendingReplies.get(messageId);
+  if (!pending) return Promise.resolve(false);
+  pendingReplies.delete(messageId);
+  clearTimeout(pending.timer);
+  return new Promise((resolve) => {
+    const req = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: METHODS.deliver,
+      params
+    };
+    pending.socket.write(JSON.stringify(req) + "\n", (err) => {
+      pending.socket.destroy();
+      resolve(!err);
+    });
+  });
+}
+async function sendDeliverWithReply(target, params, timeoutMs = 5e3) {
+  const sp = resolveSocketPath(target);
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(sp);
+    let buf = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(new Error(`timeout contacting "${target}"`));
+    }, timeoutMs);
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      const code = err.code;
+      if (code === "ENOENT" || code === "ECONNREFUSED") {
+        reject(new Error(`peer "${target}" is not reachable (socket ${code === "ENOENT" ? "not found" : "refused"})`));
+      } else {
+        reject(err);
+      }
+    };
+    socket.on("error", fail);
+    socket.on("connect", () => {
+      socket.write(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, method: METHODS.deliver, params }) + "\n"
+      );
+    });
+    socket.on("data", (chunk) => {
+      buf += chunk.toString("utf8");
+      const nl = buf.indexOf("\n");
+      if (nl === -1) return;
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        try {
+          const msg = JSON.parse(line);
+          if (msg.error) {
+            socket.destroy();
+            reject(new Error(msg.error.message || "rpc error"));
+            return;
+          }
+          const parsed = DeliverResult.safeParse(msg.result);
+          if (!parsed.success) {
+            socket.destroy();
+            reject(new Error("malformed deliver response"));
+            return;
+          }
+          const awaitSec = params.await_reply ?? 0;
+          if (awaitSec <= 0) {
+            socket.destroy();
+            resolve({ result: parsed.data, waitForReply: () => {
+            } });
+            return;
+          }
+          let replyCb = null;
+          const replyTimer = setTimeout(() => {
+            socket.destroy();
+          }, awaitSec * 1e3);
+          replyTimer.unref();
+          socket.on("close", () => {
+            clearTimeout(replyTimer);
+          });
+          const checkReply = () => {
+            const nl2 = buf.indexOf("\n");
+            if (nl2 === -1) return;
+            const replyLine = buf.slice(0, nl2);
+            buf = buf.slice(nl2 + 1);
+            clearTimeout(replyTimer);
+            try {
+              const replyMsg = JSON.parse(replyLine);
+              if (replyMsg.method === METHODS.deliver && replyMsg.params) {
+                const replyParsed = DeliverParams.safeParse(replyMsg.params);
+                if (replyParsed.success && replyCb) {
+                  replyCb(replyParsed.data);
+                }
+              }
+            } catch {
+            }
+            socket.destroy();
+          };
+          checkReply();
+          socket.on("data", () => checkReply());
+          resolve({
+            result: parsed.data,
+            waitForReply: (cb) => {
+              replyCb = cb;
+            }
+          });
+        } catch (e) {
+          socket.destroy();
+          reject(e instanceof Error ? e : new Error("parse error"));
+        }
+      }
+    });
+    socket.on("end", () => {
+      if (!settled) fail(new Error("connection closed without response"));
+    });
+  });
 }
 function rpcCall(name, method, params, timeoutMs) {
   return new Promise((resolve, reject) => {
@@ -19896,7 +20033,12 @@ function rpcCall(name, method, params, timeoutMs) {
       settled = true;
       clearTimeout(timer);
       socket.destroy();
-      reject(err);
+      const code = err.code;
+      if (code === "ENOENT" || code === "ECONNREFUSED") {
+        reject(new Error(`peer "${name}" is not reachable (socket ${code === "ENOENT" ? "not found" : "refused"})`));
+      } else {
+        reject(err);
+      }
     };
     const ok = (val) => {
       if (settled) return;
@@ -19941,7 +20083,7 @@ var INSTRUCTIONS = [
 ].join(" ");
 function buildMcpServer(selfName) {
   const server = new Server(
-    { name: "peer-channel", version: "0.2.0" },
+    { name: "peer-channel", version: "0.3.0" },
     {
       capabilities: {
         experimental: { "claude/channel": {} },
@@ -20005,7 +20147,32 @@ function buildMcpServer(selfName) {
         text: args.text,
         ...args.in_reply_to ? { in_reply_to: args.in_reply_to } : {}
       };
-      const res = await sendDeliver(args.to, params);
+      if (args.in_reply_to) {
+        const replied = await replyViaPending(args.in_reply_to, params);
+        if (replied) {
+          return {
+            content: [{ type: "text", text: "sent (reply over existing connection)" }]
+          };
+        }
+      }
+      const deliverParams = {
+        ...params,
+        await_reply: 120
+      };
+      const { result: res, waitForReply } = await sendDeliverWithReply(args.to, deliverParams);
+      waitForReply((reply) => {
+        const replyMeta = {
+          from: reply.from,
+          message_id: (0, import_node_crypto2.randomUUID)(),
+          reply_tool: "send_message"
+        };
+        if (reply.in_reply_to) replyMeta.in_reply_to = reply.in_reply_to;
+        server.notification({
+          method: "notifications/claude/channel",
+          params: { content: reply.text, meta: replyMeta }
+        }).catch(() => {
+        });
+      });
       return {
         content: [
           { type: "text", text: `sent (message_id=${res.message_id})` }
