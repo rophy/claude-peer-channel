@@ -6,7 +6,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { DeliverParams, DeliverResult } from '../shared/protocol.js'
-import { DeliverHandler, listPeers, sendDeliver } from './peer.js'
+import { DeliverHandler, listPeers, replyViaPending, sendDeliverWithReply } from './peer.js'
 
 const INSTRUCTIONS = [
   'Messages from other Claude Code sessions arrive as a <channel> block. The `from` attribute is the peer session name. `message_id` is the id of this inbound message. `in_reply_to` is set when the peer is replying to a previous message you sent. `reply_tool` indicates which tool to use for replying — always use the `send_message` tool from this MCP server, not the built-in `SendMessage` tool (which is for local sub-agents).',
@@ -99,7 +99,35 @@ export function buildMcpServer(selfName: string): McpBundle {
         text: args.text,
         ...(args.in_reply_to ? { in_reply_to: args.in_reply_to } : {}),
       }
-      const res = await sendDeliver(args.to, params)
+
+      if (args.in_reply_to) {
+        const replied = await replyViaPending(args.in_reply_to, params)
+        if (replied) {
+          return {
+            content: [{ type: 'text', text: 'sent (reply over existing connection)' }],
+          }
+        }
+      }
+
+      const deliverParams: DeliverParams = {
+        ...params,
+        await_reply: 120,
+      }
+      const { result: res, waitForReply } = await sendDeliverWithReply(args.to, deliverParams)
+
+      waitForReply(reply => {
+        const replyMeta: Record<string, string> = {
+          from: reply.from,
+          message_id: randomUUID(),
+          reply_tool: 'send_message',
+        }
+        if (reply.in_reply_to) replyMeta.in_reply_to = reply.in_reply_to
+        server.notification({
+          method: 'notifications/claude/channel',
+          params: { content: reply.text, meta: replyMeta },
+        }).catch(() => {})
+      })
+
       return {
         content: [
           { type: 'text', text: `sent (message_id=${res.message_id})` },

@@ -3,13 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('./peer.js', () => ({
   listPeers: vi.fn(),
   sendDeliver: vi.fn(),
+  replyViaPending: vi.fn(),
+  sendDeliverWithReply: vi.fn(),
 }))
 
 import { buildMcpServer } from './mcp.js'
-import { listPeers, sendDeliver } from './peer.js'
+import { listPeers, replyViaPending, sendDeliverWithReply } from './peer.js'
 
 const mockedListPeers = vi.mocked(listPeers)
-const mockedSendDeliver = vi.mocked(sendDeliver)
+const mockedReplyViaPending = vi.mocked(replyViaPending)
+const mockedSendDeliverWithReply = vi.mocked(sendDeliverWithReply)
 
 function callTool(server: ReturnType<typeof buildMcpServer>['server'], name: string, args: Record<string, unknown> = {}) {
   const handler = (server as any)._requestHandlers?.get('tools/call')
@@ -84,22 +87,111 @@ describe('send_message tool', () => {
   })
 
   it('sends a message and returns message_id', async () => {
-    mockedSendDeliver.mockResolvedValue({ message_id: 'msg-42' })
+    mockedSendDeliverWithReply.mockResolvedValue({
+      result: { message_id: 'msg-42' },
+      waitForReply: () => {},
+    })
     const { server } = buildMcpServer('sender')
     const result = await callTool(server, 'send_message', { to: 'target', text: 'hi' })
     expect(result.content[0].text).toBe('sent (message_id=msg-42)')
-    expect(mockedSendDeliver).toHaveBeenCalledWith('target', { from: 'sender', text: 'hi' })
+    expect(mockedSendDeliverWithReply).toHaveBeenCalledWith('target', {
+      from: 'sender',
+      text: 'hi',
+      await_reply: 120,
+    })
   })
 
   it('passes in_reply_to when provided', async () => {
-    mockedSendDeliver.mockResolvedValue({ message_id: 'msg-43' })
+    mockedReplyViaPending.mockResolvedValue(false)
+    mockedSendDeliverWithReply.mockResolvedValue({
+      result: { message_id: 'msg-43' },
+      waitForReply: () => {},
+    })
     const { server } = buildMcpServer('sender')
     await callTool(server, 'send_message', { to: 'target', text: 'reply', in_reply_to: 'orig' })
-    expect(mockedSendDeliver).toHaveBeenCalledWith('target', {
+    expect(mockedReplyViaPending).toHaveBeenCalledWith('orig', {
       from: 'sender',
       text: 'reply',
       in_reply_to: 'orig',
     })
+    expect(mockedSendDeliverWithReply).toHaveBeenCalledWith('target', {
+      from: 'sender',
+      text: 'reply',
+      in_reply_to: 'orig',
+      await_reply: 120,
+    })
+  })
+})
+
+describe('send_message with reply-over-same-connection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uses replyViaPending when pending connection exists', async () => {
+    mockedReplyViaPending.mockResolvedValue(true)
+    const { server } = buildMcpServer('responder')
+    const result = await callTool(server, 'send_message', {
+      to: 'requester',
+      text: 'reply text',
+      in_reply_to: 'orig-msg-id',
+    })
+    expect(mockedReplyViaPending).toHaveBeenCalledWith('orig-msg-id', {
+      from: 'responder',
+      text: 'reply text',
+      in_reply_to: 'orig-msg-id',
+    })
+    expect(mockedSendDeliverWithReply).not.toHaveBeenCalled()
+    expect(result.content[0].text).toBe('sent (reply over existing connection)')
+  })
+
+  it('falls back to sendDeliverWithReply when no pending connection', async () => {
+    mockedReplyViaPending.mockResolvedValue(false)
+    mockedSendDeliverWithReply.mockResolvedValue({
+      result: { message_id: 'fallback-msg' },
+      waitForReply: () => {},
+    })
+    const { server } = buildMcpServer('responder')
+    const result = await callTool(server, 'send_message', {
+      to: 'requester',
+      text: 'reply text',
+      in_reply_to: 'orig-msg-id',
+    })
+    expect(mockedReplyViaPending).toHaveBeenCalled()
+    expect(mockedSendDeliverWithReply).toHaveBeenCalled()
+    expect(result.content[0].text).toBe('sent (message_id=fallback-msg)')
+  })
+
+  it('emits channel notification when reply arrives on sender side', async () => {
+    let replyCb: ((reply: any) => void) | undefined
+    mockedSendDeliverWithReply.mockResolvedValue({
+      result: { message_id: 'sent-msg-1' },
+      waitForReply: cb => { replyCb = cb },
+    })
+    const { server } = buildMcpServer('sender')
+    const notifSpy = vi.spyOn(server, 'notification').mockResolvedValue(undefined)
+
+    await callTool(server, 'send_message', { to: 'target', text: 'hello' })
+
+    expect(replyCb).toBeDefined()
+    replyCb!({ from: 'target', text: 'reply text', in_reply_to: 'sent-msg-1' })
+
+    // Allow async notification to fire
+    await new Promise(r => setTimeout(r, 10))
+
+    expect(notifSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'notifications/claude/channel',
+        params: expect.objectContaining({
+          content: 'reply text',
+          meta: expect.objectContaining({
+            from: 'target',
+            in_reply_to: 'sent-msg-1',
+            reply_tool: 'send_message',
+          }),
+        }),
+      }),
+    )
   })
 })
 
