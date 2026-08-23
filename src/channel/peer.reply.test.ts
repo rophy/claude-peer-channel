@@ -50,7 +50,7 @@ describe('reply-over-same-connection integration', () => {
 
     const { result, waitForReply } = await sendDeliverWithReply(
       'responder',
-      { from: 'initiator', text: 'question?', await_reply: 5 },
+      { from: 'initiator', message: 'question?', await_reply: 5 },
       3000,
     )
     expect(result.message_id).toBe('inbound-msg-id')
@@ -63,14 +63,14 @@ describe('reply-over-same-connection integration', () => {
 
     const replied = await replyViaPending('inbound-msg-id', {
       from: 'responder',
-      text: 'answer!',
+      message: 'answer!',
       in_reply_to: 'inbound-msg-id',
     })
     expect(replied).toBe(true)
 
     const reply = await replyPromise
     expect(reply.from).toBe('responder')
-    expect(reply.text).toBe('answer!')
+    expect(reply.message).toBe('answer!')
     expect(reply.in_reply_to).toBe('inbound-msg-id')
   })
 
@@ -83,7 +83,7 @@ describe('reply-over-same-connection integration', () => {
 
     const { result } = await sendDeliverWithReply(
       'slow-responder',
-      { from: 'patient-sender', text: 'hello', await_reply: 1 },
+      { from: 'patient-sender', message: 'hello', await_reply: 1 },
       3000,
     )
     expect(result.message_id).toBe('timeout-msg')
@@ -92,7 +92,7 @@ describe('reply-over-same-connection integration', () => {
 
     const replied = await replyViaPending('timeout-msg', {
       from: 'slow-responder',
-      text: 'too late',
+      message: 'too late',
     })
     expect(replied).toBe(false)
   })
@@ -106,7 +106,7 @@ describe('reply-over-same-connection integration', () => {
 
     const { result, waitForReply } = await sendDeliverWithReply(
       'compat-target',
-      { from: 'old-sender', text: 'hi' },
+      { from: 'old-sender', message: 'hi' },
       3000,
     )
     expect(result.message_id).toBe('compat-msg')

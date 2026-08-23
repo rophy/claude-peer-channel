@@ -112,10 +112,10 @@ describe('host-level sendDeliver', () => {
 
   it('delivers to a host-level peer by prefixed name and passes peer context', async () => {
     const claim = await claimName('receiver')
-    let received: { from: string; text: string } | null = null
+    let received: { from: string; message: string } | null = null
     let ctx: PeerContext | undefined
     const peer = await claim.listen(async (params, context) => {
-      received = { from: params.from, text: params.text }
+      received = { from: params.from, message: params.message }
       ctx = context
       return { message_id: 'reply-1' }
     })
@@ -123,10 +123,10 @@ describe('host-level sendDeliver', () => {
 
     const result = await sendDeliver('testuser/receiver', {
       from: 'testuser/sender',
-      text: 'hello',
+      message: 'hello',
     })
     expect(result.message_id).toBe('reply-1')
-    expect(received).toEqual({ from: 'testuser/sender', text: 'hello' })
+    expect(received).toEqual({ from: 'testuser/sender', message: 'hello' })
     expect(ctx).toEqual({ peer_user: 'testuser' })
   })
 
@@ -141,7 +141,7 @@ describe('host-level sendDeliver', () => {
 
     await sendDeliver('testuser/receiver-unknown', {
       from: 'infra',
-      text: 'hello',
+      message: 'hello',
     })
     expect(ctx).toEqual({ peer_user: 'unknown' })
   })

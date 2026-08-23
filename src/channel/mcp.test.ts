@@ -92,11 +92,11 @@ describe('send_message tool', () => {
       waitForReply: () => {},
     })
     const { server } = buildMcpServer('sender')
-    const result = await callTool(server, 'send_message', { to: 'target', text: 'hi' })
+    const result = await callTool(server, 'send_message', { to: 'target', message: 'hi' })
     expect(result.content[0].text).toBe('sent (message_id=msg-42)')
     expect(mockedSendDeliverWithReply).toHaveBeenCalledWith('target', {
       from: 'sender',
-      text: 'hi',
+      message: 'hi',
       await_reply: 120,
     })
   })
@@ -108,15 +108,15 @@ describe('send_message tool', () => {
       waitForReply: () => {},
     })
     const { server } = buildMcpServer('sender')
-    await callTool(server, 'send_message', { to: 'target', text: 'reply', in_reply_to: 'orig' })
+    await callTool(server, 'send_message', { to: 'target', message: 'reply', in_reply_to: 'orig' })
     expect(mockedReplyViaPending).toHaveBeenCalledWith('orig', {
       from: 'sender',
-      text: 'reply',
+      message: 'reply',
       in_reply_to: 'orig',
     })
     expect(mockedSendDeliverWithReply).toHaveBeenCalledWith('target', {
       from: 'sender',
-      text: 'reply',
+      message: 'reply',
       in_reply_to: 'orig',
       await_reply: 120,
     })
@@ -133,12 +133,12 @@ describe('send_message with reply-over-same-connection', () => {
     const { server } = buildMcpServer('responder')
     const result = await callTool(server, 'send_message', {
       to: 'requester',
-      text: 'reply text',
+      message: 'reply text',
       in_reply_to: 'orig-msg-id',
     })
     expect(mockedReplyViaPending).toHaveBeenCalledWith('orig-msg-id', {
       from: 'responder',
-      text: 'reply text',
+      message: 'reply text',
       in_reply_to: 'orig-msg-id',
     })
     expect(mockedSendDeliverWithReply).not.toHaveBeenCalled()
@@ -154,7 +154,7 @@ describe('send_message with reply-over-same-connection', () => {
     const { server } = buildMcpServer('responder')
     const result = await callTool(server, 'send_message', {
       to: 'requester',
-      text: 'reply text',
+      message: 'reply text',
       in_reply_to: 'orig-msg-id',
     })
     expect(mockedReplyViaPending).toHaveBeenCalled()
@@ -171,10 +171,10 @@ describe('send_message with reply-over-same-connection', () => {
     const { server } = buildMcpServer('sender')
     const notifSpy = vi.spyOn(server, 'notification').mockResolvedValue(undefined)
 
-    await callTool(server, 'send_message', { to: 'target', text: 'hello' })
+    await callTool(server, 'send_message', { to: 'target', message: 'hello' })
 
     expect(replyCb).toBeDefined()
-    replyCb!({ from: 'target', text: 'reply text', in_reply_to: 'sent-msg-1' })
+    replyCb!({ from: 'target', message: 'reply text', in_reply_to: 'sent-msg-1' })
 
     // Allow async notification to fire
     await new Promise(r => setTimeout(r, 10))
@@ -207,7 +207,7 @@ describe('handleDeliver', () => {
     const { server, handleDeliver } = buildMcpServer('receiver')
     // Mock the notification method since server isn't connected to a transport
     vi.spyOn(server, 'notification').mockResolvedValue(undefined)
-    const result = await handleDeliver({ from: 'alice', text: 'hello' })
+    const result = await handleDeliver({ from: 'alice', message: 'hello' })
     expect(result.message_id).toMatch(/^[0-9a-f-]{36}$/)
     expect(server.notification).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -226,7 +226,7 @@ describe('handleDeliver with peer context', () => {
     const { server, handleDeliver } = buildMcpServer('receiver')
     vi.spyOn(server, 'notification').mockResolvedValue(undefined)
     const result = await handleDeliver(
-      { from: 'cat/myproject', text: 'hello' },
+      { from: 'cat/myproject', message: 'hello' },
       { peer_user: 'cat', peer_uid: 1001 },
     )
     expect(result.message_id).toMatch(/^[0-9a-f-]{36}$/)
@@ -246,7 +246,7 @@ describe('handleDeliver with peer context', () => {
   it('omits peer_user for user-level messages (no context)', async () => {
     const { server, handleDeliver } = buildMcpServer('receiver')
     vi.spyOn(server, 'notification').mockResolvedValue(undefined)
-    await handleDeliver({ from: 'alice', text: 'hi' })
+    await handleDeliver({ from: 'alice', message: 'hi' })
     const call = vi.mocked(server.notification).mock.calls[0][0] as any
     expect(call.params.meta.peer_user).toBeUndefined()
     expect(call.params.meta.peer_uid).toBeUndefined()
