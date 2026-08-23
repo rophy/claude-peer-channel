@@ -71,7 +71,10 @@ plugin/
 
 ## Release checklist
 
-1. Bump version in `package.json`.
+1. Bump version in all three places:
+   - `package.json`
+   - `src/channel/mcp.ts` (MCP server version)
+   - `plugin/.claude-plugin/plugin.json` (marketplace version)
 2. `npm run build:plugin` to refresh `plugin/channel.js`.
 3. `npm test` to verify.
 4. Commit the bundle alongside the version bump.
