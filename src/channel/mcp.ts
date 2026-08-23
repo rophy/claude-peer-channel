@@ -63,7 +63,7 @@ export function buildMcpServer(selfName: string): McpBundle {
           type: 'object',
           properties: {
             to: { type: 'string', description: 'Target session name' },
-            message: { type: 'string', description: 'Message body' },
+            message: { type: 'string', minLength: 1, description: 'Message body' },
             in_reply_to: {
               type: 'string',
               description: 'message_id of the inbound message being replied to',
