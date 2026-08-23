@@ -1,7 +1,7 @@
 {
   "name": "peer-channel",
   "description": "Peer-to-peer messaging between Claude Code sessions on the same machine",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": {
     "name": "rophy"
   },
