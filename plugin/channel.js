@@ -20083,7 +20083,7 @@ var INSTRUCTIONS = [
 ].join(" ");
 function buildMcpServer(selfName) {
   const server = new Server(
-    { name: "peer-channel", version: "0.4.0" },
+    { name: "peer-channel", version: "0.4.1" },
     {
       capabilities: {
         experimental: { "claude/channel": {} },
