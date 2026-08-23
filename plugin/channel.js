@@ -19573,7 +19573,7 @@ var PingResult = external_exports.object({
 });
 var DeliverParams = external_exports.object({
   from: external_exports.string().min(1),
-  text: external_exports.string(),
+  message: external_exports.string().min(1),
   in_reply_to: external_exports.string().optional(),
   await_reply: external_exports.number().positive().optional()
 });
@@ -20083,7 +20083,7 @@ var INSTRUCTIONS = [
 ].join(" ");
 function buildMcpServer(selfName) {
   const server = new Server(
-    { name: "peer-channel", version: "0.3.0" },
+    { name: "peer-channel", version: "0.4.0" },
     {
       capabilities: {
         experimental: { "claude/channel": {} },
@@ -20119,13 +20119,13 @@ function buildMcpServer(selfName) {
           type: "object",
           properties: {
             to: { type: "string", description: "Target session name" },
-            text: { type: "string", description: "Message body" },
+            message: { type: "string", minLength: 1, description: "Message body" },
             in_reply_to: {
               type: "string",
               description: "message_id of the inbound message being replied to"
             }
           },
-          required: ["to", "text"],
+          required: ["to", "message"],
           additionalProperties: false
         }
       }
@@ -20144,7 +20144,7 @@ function buildMcpServer(selfName) {
       const args = req.params.arguments;
       const params = {
         from: selfName,
-        text: args.text,
+        message: args.message,
         ...args.in_reply_to ? { in_reply_to: args.in_reply_to } : {}
       };
       if (args.in_reply_to) {
@@ -20169,7 +20169,7 @@ function buildMcpServer(selfName) {
         if (reply.in_reply_to) replyMeta.in_reply_to = reply.in_reply_to;
         server.notification({
           method: "notifications/claude/channel",
-          params: { content: reply.text, meta: replyMeta }
+          params: { content: reply.message, meta: replyMeta }
         }).catch(() => {
         });
       });
@@ -20193,7 +20193,7 @@ function buildMcpServer(selfName) {
     if (context?.peer_uid !== void 0) meta.peer_uid = String(context.peer_uid);
     await server.notification({
       method: "notifications/claude/channel",
-      params: { content: params.text, meta }
+      params: { content: params.message, meta }
     });
     const result = { message_id };
     return result;
