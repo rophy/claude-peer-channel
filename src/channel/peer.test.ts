@@ -98,16 +98,16 @@ describe('sendDeliver + handleConn round-trip', () => {
 
   it('delivers a message and returns message_id', async () => {
     const claim = await claimName('receiver')
-    let received: { from: string; text: string } | null = null
+    let received: { from: string; message: string } | null = null
     const peer = await claim.listen(async params => {
-      received = { from: params.from, text: params.text }
+      received = { from: params.from, message: params.message }
       return { message_id: 'reply-1' }
     })
     peers.push(peer)
 
-    const result = await sendDeliver('receiver', { from: 'sender', text: 'hello' })
+    const result = await sendDeliver('receiver', { from: 'sender', message: 'hello' })
     expect(result.message_id).toBe('reply-1')
-    expect(received).toEqual({ from: 'sender', text: 'hello' })
+    expect(received).toEqual({ from: 'sender', message: 'hello' })
   })
 
   it('delivers with in_reply_to', async () => {
@@ -119,19 +119,19 @@ describe('sendDeliver + handleConn round-trip', () => {
     })
     peers.push(peer)
 
-    await sendDeliver('echo', { from: 'x', text: 'hi', in_reply_to: 'orig-msg' })
+    await sendDeliver('echo', { from: 'x', message: 'hi', in_reply_to: 'orig-msg' })
     expect(gotReplyTo).toBe('orig-msg')
   })
 
   it('rejects when target is not reachable', async () => {
     await expect(
-      sendDeliver('nonexistent', { from: 'a', text: 'b' }, 500),
+      sendDeliver('nonexistent', { from: 'a', message: 'b' }, 500),
     ).rejects.toThrow(/peer "nonexistent" is not reachable/)
   })
 
   it('gives a clear error when peer socket does not exist (sendDeliverWithReply)', async () => {
     await expect(
-      sendDeliverWithReply('no-such-peer', { from: 'a', text: 'b' }, 500),
+      sendDeliverWithReply('no-such-peer', { from: 'a', message: 'b' }, 500),
     ).rejects.toThrow(/peer "no-such-peer" is not reachable/)
   })
 
@@ -143,7 +143,7 @@ describe('sendDeliver + handleConn round-trip', () => {
     peers.push(peer)
 
     await expect(
-      sendDeliver('throws-handler', { from: 'sender', text: 'hi' }, 1000),
+      sendDeliver('throws-handler', { from: 'sender', message: 'hi' }, 1000),
     ).rejects.toThrow('handler exploded')
   })
 
@@ -262,7 +262,7 @@ describe('reply-over-same-connection', () => {
 
     const { result, waitForReply } = await sendDeliverWithReply(
       'reply-target',
-      { from: 'reply-sender', text: 'hello', await_reply: 5 },
+      { from: 'reply-sender', message: 'hello', await_reply: 5 },
       3000,
     )
     expect(result.message_id).toBe('msg-from-receiver')
@@ -275,20 +275,20 @@ describe('reply-over-same-connection', () => {
 
     const replied = await replyViaPending('msg-from-receiver', {
       from: 'reply-target',
-      text: 'got it',
+      message: 'got it',
       in_reply_to: 'msg-from-receiver',
     })
     expect(replied).toBe(true)
 
     const reply = await replyPromise
     expect(reply.from).toBe('reply-target')
-    expect(reply.text).toBe('got it')
+    expect(reply.message).toBe('got it')
   })
 
   it('replyViaPending returns false when no pending connection', async () => {
     const replied = await replyViaPending('nonexistent-msg', {
       from: 'x',
-      text: 'y',
+      message: 'y',
     })
     expect(replied).toBe(false)
   })
@@ -302,7 +302,7 @@ describe('reply-over-same-connection', () => {
 
     await sendDeliverWithReply(
       'timeout-target',
-      { from: 'timeout-sender', text: 'hi', await_reply: 1 },
+      { from: 'timeout-sender', message: 'hi', await_reply: 1 },
       3000,
     )
 
@@ -310,7 +310,7 @@ describe('reply-over-same-connection', () => {
 
     const replied = await replyViaPending('timeout-msg', {
       from: 'timeout-target',
-      text: 'too late',
+      message: 'too late',
     })
     expect(replied).toBe(false)
   })

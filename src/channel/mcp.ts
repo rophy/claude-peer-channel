@@ -24,7 +24,7 @@ export interface McpBundle {
 
 export function buildMcpServer(selfName: string): McpBundle {
   const server = new Server(
-    { name: 'peer-channel', version: '0.3.0' },
+    { name: 'peer-channel', version: '0.4.0' },
     {
       capabilities: {
         experimental: { 'claude/channel': {} },
@@ -63,13 +63,13 @@ export function buildMcpServer(selfName: string): McpBundle {
           type: 'object',
           properties: {
             to: { type: 'string', description: 'Target session name' },
-            text: { type: 'string', description: 'Message body' },
+            message: { type: 'string', minLength: 1, description: 'Message body' },
             in_reply_to: {
               type: 'string',
               description: 'message_id of the inbound message being replied to',
             },
           },
-          required: ['to', 'text'],
+          required: ['to', 'message'],
           additionalProperties: false,
         },
       },
@@ -91,12 +91,12 @@ export function buildMcpServer(selfName: string): McpBundle {
     if (req.params.name === 'send_message') {
       const args = req.params.arguments as {
         to: string
-        text: string
+        message: string
         in_reply_to?: string
       }
       const params: DeliverParams = {
         from: selfName,
-        text: args.text,
+        message: args.message,
         ...(args.in_reply_to ? { in_reply_to: args.in_reply_to } : {}),
       }
 
@@ -124,7 +124,7 @@ export function buildMcpServer(selfName: string): McpBundle {
         if (reply.in_reply_to) replyMeta.in_reply_to = reply.in_reply_to
         server.notification({
           method: 'notifications/claude/channel',
-          params: { content: reply.text, meta: replyMeta },
+          params: { content: reply.message, meta: replyMeta },
         }).catch(() => {})
       })
 
@@ -149,7 +149,7 @@ export function buildMcpServer(selfName: string): McpBundle {
     if (context?.peer_uid !== undefined) meta.peer_uid = String(context.peer_uid)
     await server.notification({
       method: 'notifications/claude/channel',
-      params: { content: params.text, meta },
+      params: { content: params.message, meta },
     })
     const result: DeliverResult = { message_id }
     return result

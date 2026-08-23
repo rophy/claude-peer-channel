@@ -20,28 +20,32 @@ describe('PingResult', () => {
 
 describe('DeliverParams', () => {
   it('accepts valid params', () => {
-    const res = DeliverParams.safeParse({ from: 'alice', text: 'hello' })
+    const res = DeliverParams.safeParse({ from: 'alice', message: 'hello' })
     expect(res.success).toBe(true)
   })
 
   it('accepts optional in_reply_to', () => {
-    const res = DeliverParams.safeParse({ from: 'alice', text: 'hi', in_reply_to: 'msg-1' })
+    const res = DeliverParams.safeParse({ from: 'alice', message: 'hi', in_reply_to: 'msg-1' })
     expect(res.success).toBe(true)
     expect(res.data?.in_reply_to).toBe('msg-1')
   })
 
   it('rejects empty from', () => {
-    expect(DeliverParams.safeParse({ from: '', text: 'hi' }).success).toBe(false)
+    expect(DeliverParams.safeParse({ from: '', message: 'hi' }).success).toBe(false)
   })
 
-  it('rejects missing text', () => {
+  it('rejects missing message', () => {
     expect(DeliverParams.safeParse({ from: 'alice' }).success).toBe(false)
+  })
+
+  it('rejects empty message', () => {
+    expect(DeliverParams.safeParse({ from: 'alice', message: '' }).success).toBe(false)
   })
 
   it('accepts await_reply in DeliverParams', () => {
     const result = DeliverParams.safeParse({
       from: 'alice',
-      text: 'hello',
+      message: 'hello',
       await_reply: 120,
     })
     expect(result.success).toBe(true)
@@ -53,7 +57,7 @@ describe('DeliverParams', () => {
   it('allows DeliverParams without await_reply', () => {
     const result = DeliverParams.safeParse({
       from: 'alice',
-      text: 'hello',
+      message: 'hello',
     })
     expect(result.success).toBe(true)
     if (result.success) {

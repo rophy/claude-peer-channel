@@ -10,7 +10,7 @@ export const PingResult = z.object({
 
 export const DeliverParams = z.object({
   from: z.string().min(1),
-  text: z.string(),
+  message: z.string().min(1),
   in_reply_to: z.string().optional(),
   await_reply: z.number().positive().optional(),
 })

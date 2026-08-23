@@ -59,7 +59,7 @@ On startup, the channel reports its registered name to stderr:
 ### Tools exposed to Claude
 
 - **`list_sessions`** — returns the names of all other sessions currently reachable.
-- **`send_message(to, text, in_reply_to?)`** — sends a message to another session. Pass `in_reply_to` with a prior message's id to thread replies.
+- **`send_message(to, message, in_reply_to?)`** — sends a message to another session. Pass `in_reply_to` with a prior message's id to thread replies.
 
 ### Inbound messages
 
@@ -124,7 +124,7 @@ Newline-delimited JSON-RPC 2.0 over an AF_UNIX stream socket. One request per co
 | Method | Params | Result |
 |---|---|---|
 | `ping` | `{}` | `{name, version, protocol}` |
-| `deliver` | `{from, text, in_reply_to?}` | `{message_id}` |
+| `deliver` | `{from, message, in_reply_to?}` | `{message_id}` |
 
 Error codes follow JSON-RPC conventions (`-32700` parse, `-32600` invalid request, `-32601` method not found, `-32602` invalid params, `-32603` internal).
 
